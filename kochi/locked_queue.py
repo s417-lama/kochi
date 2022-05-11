@@ -22,8 +22,8 @@ if __name__ == "__main__":
     A locked queue protected by flock.
 
     To test the behaviour, concurrently run this file on different nodes:
-    machine1$ python3 locked_queue.py > a1
-    machine2$ python3 locked_queue.py > a2
+    machine1$ python3 -m kochi.locked_queue > a1
+    machine2$ python3 -m kochi.locked_queue > a2
 
     To check:
     $ cat a1 a2 | sort -n | uniq | wc -l
