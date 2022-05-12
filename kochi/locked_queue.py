@@ -11,7 +11,7 @@ def pop(filename):
         fcntl.flock(f.fileno(), fcntl.LOCK_EX)
         s = f.readlines()
         if len(s) > 0:
-            result = s[0].split("\n")[0]
+            result = s[0].split("\n")[0].rstrip("\x00")
             f.seek(0)
             f.writelines(s[1:])
             f.truncate()
