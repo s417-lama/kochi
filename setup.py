@@ -1,9 +1,5 @@
 from setuptools import setup, find_packages
 
-import kochi.settings
-
-kochi.settings.init()
-
 setup(
     name="kochi",
     version="0.0.1",
@@ -16,5 +12,6 @@ setup(
     },
     install_requires=[
         "click",
+        "toml",
     ],
 )

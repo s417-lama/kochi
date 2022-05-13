@@ -1,22 +1,41 @@
 import click
+import subprocess
 
+from . import settings
 from . import stats
 from . import worker
 from . import job_queue
 
 @click.group()
 def cli():
-    pass
+    settings.ensure_init()
+
+# alloc_interact
+# -----------------------------------------------------------------------------
+
+@cli.command(name="alloc_interact")
+@click.argument("machine", required=True)
+@click.option("-n", "--nodes", metavar="NODES_SPEC", help="Specification of nodes to be allocated on machine MACHINE")
+def alloc_interact_cmd(machine, nodes):
+    """
+    Allocates nodes of NODES_SPEC on machine MACHINE as an interactive job
+    """
+    config = settings.machine_config(machine)
+    login_host = config["login_host"]
+    commands_on_login_node = config["alloc_interact"]
+    if "work_dir" in config:
+        commands_on_login_node = "cd {} && {}".format(config["work_dir"], commands_on_login_node)
+    subprocess.run("ssh -o LogLevel=QUIET -t {} '{}'".format(login_host, commands_on_login_node), shell=True)
 
 # enqueue
 # -----------------------------------------------------------------------------
 
 @cli.command(name="enqueue", context_settings=dict(ignore_unknown_options=True))
 @click.argument("commands", required=True, nargs=-1, type=click.UNPROCESSED)
-@click.option("-q", "--queue", required=True)
+@click.option("-q", "--queue", metavar="QUEUE", required=True, help="Queue to enqueue a job")
 def enqueue_cmd(commands, queue):
     """
-    Enqueues a job that runs commands COMMANDS.
+    Enqueues a job that runs commands COMMANDS to queue QUEUE.
     """
     job = job_queue.Job(name="", dependencies="", environment="", commands=list(commands))
     job_queue.push(queue, job)
@@ -25,7 +44,7 @@ def enqueue_cmd(commands, queue):
 # -----------------------------------------------------------------------------
 
 @cli.command(name="work")
-@click.argument("queue", required=True)
+@click.option("-q", "--queue", metavar="QUEUE", required=True, help="Queue to enqueue a job")
 def work_cmd(queue):
     """
     Start a new worker that works on queue QUEUE.

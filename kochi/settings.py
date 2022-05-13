@@ -1,9 +1,17 @@
 import os
+import toml
 
 from . import atomic_counter
 
 def root_path():
     return os.environ.get("KOCHI_ROOT", os.path.join(os.path.expanduser("~"), ".kochi"))
+
+def config_filepath():
+    return os.path.join(root_path(), "conf.toml")
+
+def config():
+    with open(config_filepath(), "r") as f:
+        return toml.load(f)
 
 # Queues
 # -----------------------------------------------------------------------------
@@ -26,7 +34,13 @@ def worker_counter_filepath():
 def worker_log_filepath(idx):
     return os.path.join(worker_dirpath(), "log_{}.txt".format(idx))
 
-def init():
+# Machine
+# -----------------------------------------------------------------------------
+
+def machine_config(machine):
+    return config()["machines"][machine]
+
+def ensure_init():
     os.makedirs(queue_dirpath(), exist_ok=True)
     os.makedirs(worker_dirpath(), exist_ok=True)
     try:
