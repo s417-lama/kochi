@@ -44,12 +44,13 @@ def enqueue_cmd(commands, queue):
 # -----------------------------------------------------------------------------
 
 @cli.command(name="work")
-@click.option("-q", "--queue", metavar="QUEUE", required=True, help="Queue to enqueue a job")
-def work_cmd(queue):
+@click.option("-q", "--queue", metavar="QUEUE", required=True, help="Queue to work on")
+@click.option("-b", "--blocking", is_flag=True, default=False, help="Whether to block to wait for job arrival")
+def work_cmd(queue, blocking):
     """
     Start a new worker that works on queue QUEUE.
     """
-    worker.start(queue)
+    worker.start(queue, blocking)
 
 # show
 # -----------------------------------------------------------------------------
