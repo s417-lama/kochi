@@ -2,19 +2,17 @@ from collections import namedtuple
 import pickle
 import base64
 
+from . import settings
 from . import locked_queue
 
 Job = namedtuple("Job", ["name", "dependencies", "environment", "commands"])
 
-def _queue_filename(queue_name):
-    return "{}.lock".format(queue_name)
-
 def push(queue_name, job):
     job_str = base64.b64encode(pickle.dumps(job)).decode()
-    locked_queue.push(_queue_filename(queue_name), job_str)
+    locked_queue.push(settings.queue_filepath(queue_name), job_str)
 
 def pop(queue_name):
-    job_str = locked_queue.pop(_queue_filename(queue_name))
+    job_str = locked_queue.pop(settings.queue_filepath(queue_name))
     if job_str:
         return pickle.loads(base64.b64decode(job_str.encode()))
     else:
