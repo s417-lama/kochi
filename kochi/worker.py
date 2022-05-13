@@ -10,8 +10,7 @@ def worker_loop(queue_name, stdout):
         if job is None:
             return
         print("Kochi job {} started.".format(job.name), file=stdout, flush=True)
-        subprocess.run(job.commands, shell=True, stdout=stdout)
-        print("Kochi job {} finished.".format(job.name), file=stdout, flush=True)
+        subprocess.run(job.commands, shell=not isinstance(job.commands, list), stdout=stdout)
 
 def start(queue_name):
     idx = atomic_counter.fetch_and_add(settings.worker_counter_filepath(), 1)
