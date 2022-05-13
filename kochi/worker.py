@@ -9,16 +9,16 @@ def worker_loop(queue_name, stdout):
         job = job_queue.pop(queue_name)
         if job is None:
             return
-        print("Kochi job {} started.".format(job.name), file=stdout)
+        print("Kochi job {} started.".format(job.name), file=stdout, flush=True)
         subprocess.run(job.commands, shell=True, stdout=stdout)
-        print("Kochi job {} finished.".format(job.name), file=stdout)
+        print("Kochi job {} finished.".format(job.name), file=stdout, flush=True)
 
 def start(queue_name):
     idx = atomic_counter.fetch_and_add(settings.worker_counter_filepath(), 1)
     tee = subprocess.Popen(["tee", settings.worker_log_filepath(idx)], stdin=subprocess.PIPE, encoding="utf-8")
-    print("Kochi worker {} started.".format(idx), file=tee.stdin)
+    print("Kochi worker {} started.".format(idx), file=tee.stdin, flush=True)
     worker_loop(queue_name, tee.stdin)
-    print("Kochi worker {} finished.".format(idx), file=tee.stdin)
+    print("Kochi worker {} finished.".format(idx), file=tee.stdin, flush=True)
     tee.stdin.close()
 
 if __name__ == "__main__":
