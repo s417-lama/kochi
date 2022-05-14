@@ -1,13 +1,10 @@
 import click
-import subprocess
 
+from . import util
 from . import settings
 from . import stats
 from . import worker
 from . import job_queue
-
-def run_command_ssh(host, commands):
-    subprocess.run("ssh -o LogLevel=QUIET -t {} '{}'".format(host, commands), shell=True)
 
 @click.group()
 def cli():
@@ -28,7 +25,7 @@ def alloc_interact_cmd(machine, nodes):
     commands_on_login_node = config["alloc_interact"]
     if "work_dir" in config:
         commands_on_login_node = "cd {} && {}".format(config["work_dir"], commands_on_login_node)
-    run_command_ssh(login_host, commands_on_login_node)
+    util.run_command_ssh(login_host, commands_on_login_node)
 
 # enqueue
 # -----------------------------------------------------------------------------
@@ -47,8 +44,8 @@ def enqueue_cmd(machine, commands, queue):
     else:
         config = settings.machine_config(machine)
         login_host = config["login_host"]
-        job_str = job_queue.serialize(job)
-        run_command_ssh(login_host, "kochi enqueue_aux {} -q {} {}".format(machine, queue, job_str))
+        job_str = util.serialize(job)
+        util.run_command_ssh(login_host, "kochi enqueue_aux {} -q {} {}".format(machine, queue, job_str))
 
 @cli.command(name="enqueue_aux", hidden=True)
 @click.argument("machine", required=True)
@@ -58,7 +55,7 @@ def enqueue_raw_cmd(machine, job_string, queue):
     """
     For internal use only.
     """
-    job = job_queue.deserialize(job_string)
+    job = util.deserialize(job_string)
     job_queue.push(queue, job)
 
 # work
