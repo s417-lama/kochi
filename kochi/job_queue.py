@@ -7,14 +7,20 @@ from . import locked_queue
 
 Job = namedtuple("Job", ["name", "dependencies", "environment", "commands"])
 
+def serialize(job):
+    return base64.b64encode(pickle.dumps(job)).decode()
+
+def deserialize(job_str):
+    return pickle.loads(base64.b64decode(job_str.encode()))
+
 def push(queue_name, job):
-    job_str = base64.b64encode(pickle.dumps(job)).decode()
+    job_str = serialize(job)
     locked_queue.push(settings.queue_filepath(queue_name), job_str)
 
 def pop(queue_name):
     job_str = locked_queue.pop(settings.queue_filepath(queue_name))
     if job_str:
-        return pickle.loads(base64.b64decode(job_str.encode()))
+        return deserialize(job_str)
     else:
         return None
 

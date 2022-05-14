@@ -6,6 +6,9 @@ from . import stats
 from . import worker
 from . import job_queue
 
+def run_command_ssh(host, commands):
+    subprocess.run("ssh -o LogLevel=QUIET -t {} '{}'".format(host, commands), shell=True)
+
 @click.group()
 def cli():
     settings.ensure_init()
@@ -25,19 +28,37 @@ def alloc_interact_cmd(machine, nodes):
     commands_on_login_node = config["alloc_interact"]
     if "work_dir" in config:
         commands_on_login_node = "cd {} && {}".format(config["work_dir"], commands_on_login_node)
-    subprocess.run("ssh -o LogLevel=QUIET -t {} '{}'".format(login_host, commands_on_login_node), shell=True)
+    run_command_ssh(login_host, commands_on_login_node)
 
 # enqueue
 # -----------------------------------------------------------------------------
 
 @cli.command(name="enqueue", context_settings=dict(ignore_unknown_options=True))
+@click.argument("machine", required=True, nargs=1)
 @click.argument("commands", required=True, nargs=-1, type=click.UNPROCESSED)
 @click.option("-q", "--queue", metavar="QUEUE", required=True, help="Queue to enqueue a job")
-def enqueue_cmd(commands, queue):
+def enqueue_cmd(machine, commands, queue):
     """
-    Enqueues a job that runs commands COMMANDS to queue QUEUE.
+    Enqueues a job that runs commands COMMANDS to queue QUEUE on machine MACHINE.
     """
     job = job_queue.Job(name="", dependencies="", environment="", commands=list(commands))
+    if machine == "local":
+        job_queue.push(queue, job)
+    else:
+        config = settings.machine_config(machine)
+        login_host = config["login_host"]
+        job_str = job_queue.serialize(job)
+        run_command_ssh(login_host, "kochi enqueue_aux {} -q {} {}".format(machine, queue, job_str))
+
+@cli.command(name="enqueue_aux", hidden=True)
+@click.argument("machine", required=True)
+@click.argument("job_string", required=True)
+@click.option("-q", "--queue", required=True)
+def enqueue_raw_cmd(machine, job_string, queue):
+    """
+    For internal use only.
+    """
+    job = job_queue.deserialize(job_string)
     job_queue.push(queue, job)
 
 # work
