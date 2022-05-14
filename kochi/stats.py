@@ -13,5 +13,10 @@ def show_workers():
     for idx in range(max_workers):
         print("Worker {}".format(idx))
 
-def show_worker_log(idx):
-    subprocess.run(["cat", settings.worker_log_filepath(idx)])
+def show_jobs():
+    max_jobs = atomic_counter.fetch(settings.job_counter_filepath())
+    for idx in range(max_jobs):
+        print("Job {}".format(idx))
+
+def show_job_log(idx):
+    subprocess.run(["cat", settings.job_log_filepath(idx)])

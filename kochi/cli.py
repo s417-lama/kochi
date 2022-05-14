@@ -78,12 +78,16 @@ def show():
     pass
 
 @show.command(name="queues")
-def queues_cmd():
+def show_queues_cmd():
     stats.show_queues()
 
 @show.command(name="workers")
-def workers_cmd():
+def show_workers_cmd():
     stats.show_workers()
+
+@show.command(name="jobs")
+def show_jobs_cmd():
+    stats.show_jobs()
 
 # show log
 # -----------------------------------------------------------------------------
@@ -94,8 +98,16 @@ def log():
 
 @log.command(name="worker")
 @click.argument("worker_id", required=True, type=int)
-def worker_cmd(worker_id):
+def show_log_worker_cmd(worker_id):
     """
-    Show a log file of the worker whose ID is WORKER_ID.
+    Show a log file of worker WORKER_ID.
     """
     stats.show_worker_log(worker_id)
+
+@log.command(name="job")
+@click.argument("job_id", required=True, type=int)
+def show_log_job_cmd(job_id):
+    """
+    Show a log file of job JOB_ID.
+    """
+    stats.show_job_log(job_id)

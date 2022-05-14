@@ -5,13 +5,18 @@ from . import settings
 from . import job_queue
 from . import atomic_counter
 
+def run_job(job, stdout):
+    print("Kochi job {} (ID={}) started.".format(job.name, job.id), file=stdout, flush=True)
+    tee = subprocess.Popen(["tee", settings.job_log_filepath(job.id)], stdin=subprocess.PIPE, stdout=stdout, encoding="utf-8")
+    subprocess.run(job.commands, shell=not isinstance(job.commands, list), stdout=tee.stdin)
+    tee.stdin.close()
+    print("Kochi job {} (ID={}) finished.".format(job.name, job.id), file=stdout, flush=True)
+
 def worker_loop(queue_name, blocking, stdout):
     while True:
         job = job_queue.pop(queue_name)
         if job:
-            print("Kochi job {} started.".format(job.name), file=stdout, flush=True)
-            subprocess.run(job.commands, shell=not isinstance(job.commands, list), stdout=stdout)
-            print("Kochi job {} finished.".format(job.name), file=stdout, flush=True)
+            run_job(job, stdout)
         elif blocking:
             time.sleep(0.1) # TODO: monitor filesystem events?
         else:

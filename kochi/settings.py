@@ -34,6 +34,18 @@ def worker_counter_filepath():
 def worker_log_filepath(idx):
     return os.path.join(worker_dirpath(), "log_{}.txt".format(idx))
 
+# Jobs
+# -----------------------------------------------------------------------------
+
+def job_dirpath():
+    return os.path.join(root_path(), "jobs")
+
+def job_counter_filepath():
+    return os.path.join(job_dirpath(), "counter.lock")
+
+def job_log_filepath(idx):
+    return os.path.join(job_dirpath(), "log_{}.txt".format(idx))
+
 # Machine
 # -----------------------------------------------------------------------------
 
@@ -41,9 +53,14 @@ def machine_config(machine):
     return config()["machines"][machine]
 
 def ensure_init():
-    os.makedirs(queue_dirpath(), exist_ok=True)
+    os.makedirs(queue_dirpath() , exist_ok=True)
     os.makedirs(worker_dirpath(), exist_ok=True)
+    os.makedirs(job_dirpath()   , exist_ok=True)
     try:
         atomic_counter.fetch(worker_counter_filepath())
     except:
         atomic_counter.reset(worker_counter_filepath())
+    try:
+        atomic_counter.fetch(job_counter_filepath())
+    except:
+        atomic_counter.reset(job_counter_filepath())
