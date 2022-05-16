@@ -1,3 +1,4 @@
+from collections import namedtuple
 import os
 import subprocess
 import sys
@@ -121,6 +122,47 @@ def work_cmd(queue, blocking, worker_id):
     Start a new worker that works on queue QUEUE.
     """
     worker.start(queue, blocking, worker_id)
+
+# install
+# -----------------------------------------------------------------------------
+
+InstallArgs = namedtuple("InstallArgs", ["machine", "project_name", "dependency", "install_name", "context", "commands"])
+
+@cli.command(name="install")
+@click.argument("machine", required=True)
+@click.option("-d", "--dependency", metavar="DEP", required=True, help="Project name to be installed")
+@click.option("-n", "--install-name", metavar="NAME", required=True, help="Installation name specified in the config")
+@click.option("-g", "--git-remote", help="URL or path to remote git repository. By default, a remote repository is created on the remote machine via ssh.")
+def install_cmd(machine, dependency, install_name, git_remote):
+    """
+    Install project DEP of name NAME that is depended on by this repository on machine MACHINE.
+    """
+    project_name = project.project_name_of_cwd()
+    login_host = settings.machine_config(machine)["login_host"]
+    local_dep_path = os.path.join(util.toplevel_git_dirpath(), settings.project_dep_config(dependency)["local_path"])
+    dep_config = settings.project_dep_install_config(dependency, install_name)
+    with util.cwd(local_dep_path):
+        if not git_remote:
+            project.sync(login_host)
+        ctx = context.create_with_project_config(dep_config, git_remote)
+    commands = "\n".join(dep_config["commands"]) if isinstance(dep_config["commands"], list) else dep_config["commands"]
+    args = InstallArgs(machine, project_name, dependency, install_name, ctx, commands)
+    util.run_command_ssh_interactive(login_host, "kochi install_aux {}".format(util.serialize(args)))
+
+@cli.command(name="install_aux", hidden=True)
+@click.argument("args_serialized", required=True)
+def install_aux_cmd(args_serialized):
+    """
+    For internal use only.
+    """
+    args = util.deserialize(args_serialized)
+    prefix = settings.project_dep_install_dirpath(args.project_name, args.dependency, args.install_name, args.machine)
+    os.makedirs(prefix, exist_ok=True)
+    with util.tmpdir(settings.project_dep_install_tmp_dirpath(args.project_name, args.dependency, args.install_name, args.machine)):
+        with context.context(args.context):
+            env_dict = dict(KOCHI_INSTALL_PREFIX=prefix)
+            commands = string.Template(args.commands).substitute(env_dict)
+            subprocess.run(commands, shell=True, check=True)
 
 # show
 # -----------------------------------------------------------------------------

@@ -56,7 +56,19 @@ def project_dirpath():
     return os.path.join(root_path(), "projects")
 
 def project_git_dirpath(project_name):
-    return os.path.join(project_dirpath(), project_name)
+    return os.path.join(project_dirpath(), project_name, "git")
+
+def project_dep_install_dirpath(project_name, dep_name, inst_name, machine):
+    return os.path.join(project_dirpath(), project_name, "install", dep_name, inst_name, machine)
+
+def project_dep_install_tmp_dirpath(project_name, dep_name, inst_name, machine):
+    return os.path.join(project_dirpath(), project_name, "tmp", "install", dep_name, inst_name, machine)
+
+def project_dep_config(project_name):
+    return config()["dependencies"][project_name]
+
+def project_dep_install_config(project_name, inst_name):
+    return project_dep_config(project_name)["installations"][inst_name]
 
 # Machine
 # -----------------------------------------------------------------------------

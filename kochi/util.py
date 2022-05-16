@@ -1,4 +1,5 @@
 import os
+import sys
 import subprocess
 import shutil
 import pickle
@@ -56,3 +57,10 @@ def is_inside_git_dir():
         return result == "true"
     except subprocess.CalledProcessError:
         return False
+
+def toplevel_git_dirpath():
+    try:
+        return subprocess.run(["git", "rev-parse", "--show-toplevel"], stdout=subprocess.PIPE, encoding="utf-8", check=True).stdout.strip()
+    except subprocess.CalledProcessError:
+        print("This command must be called inside a git project.", file=sys.stderr)
+        sys.exit(1)

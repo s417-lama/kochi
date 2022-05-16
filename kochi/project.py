@@ -5,8 +5,7 @@ from . import util
 from . import settings
 
 def project_name_of_cwd():
-    toplevel_gitdir = subprocess.run(["git", "rev-parse", "--show-toplevel"], stdout=subprocess.PIPE, encoding="utf-8", check=True).stdout.strip()
-    return util.git_repo_name(toplevel_gitdir)
+    return util.git_repo_name(util.toplevel_git_dirpath())
 
 def ensure_init(host, project_name):
     if host:
