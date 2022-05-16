@@ -49,6 +49,15 @@ def job_counter_filepath():
 def job_log_filepath(idx):
     return os.path.join(job_dirpath(), "log_{}.txt".format(idx))
 
+# Projects
+# -----------------------------------------------------------------------------
+
+def project_dirpath():
+    return os.path.join(root_path(), "projects")
+
+def project_git_dirpath(project_name):
+    return os.path.join(project_dirpath(), project_name)
+
 # Machine
 # -----------------------------------------------------------------------------
 
@@ -56,9 +65,10 @@ def machine_config(machine):
     return config()["machines"][machine]
 
 def ensure_init():
-    os.makedirs(queue_dirpath() , exist_ok=True)
-    os.makedirs(worker_dirpath(), exist_ok=True)
-    os.makedirs(job_dirpath()   , exist_ok=True)
+    os.makedirs(queue_dirpath()  , exist_ok=True)
+    os.makedirs(worker_dirpath() , exist_ok=True)
+    os.makedirs(job_dirpath()    , exist_ok=True)
+    os.makedirs(project_dirpath(), exist_ok=True)
     try:
         atomic_counter.fetch(worker_counter_filepath())
     except:

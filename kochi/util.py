@@ -7,8 +7,11 @@ import contextlib
 import pathlib
 import urllib
 
-def run_command_ssh(host, commands):
+def run_command_ssh_interactive(host, commands):
     subprocess.run("ssh -o LogLevel=QUIET -t {} '{}'".format(host, commands), shell=True)
+
+def run_command_ssh(host, commands):
+    return subprocess.run("ssh -o LogLevel=QUIET {} '{}'".format(host, commands), shell=True, stdout=subprocess.PIPE, encoding="utf-8").stdout
 
 def serialize(obj):
     return base64.b64encode(pickle.dumps(obj)).decode()
