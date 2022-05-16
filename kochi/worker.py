@@ -1,15 +1,15 @@
 import subprocess
 import time
 
+from . import util
 from . import settings
 from . import job_queue
 from . import atomic_counter
 
 def run_job(job, stdout):
     print("Kochi job {} (ID={}) started.".format(job.name, job.id), file=stdout, flush=True)
-    tee = subprocess.Popen(["tee", settings.job_log_filepath(job.id)], stdin=subprocess.PIPE, stdout=stdout, encoding="utf-8")
-    subprocess.run(job.commands, shell=not isinstance(job.commands, list), stdout=tee.stdin)
-    tee.stdin.close()
+    with subprocess.Popen(["tee", settings.job_log_filepath(job.id)], stdin=subprocess.PIPE, stdout=stdout, encoding="utf-8") as tee:
+        subprocess.run(job.commands, shell=not isinstance(job.commands, list), stdout=tee.stdin)
     print("Kochi job {} (ID={}) finished.".format(job.name, job.id), file=stdout, flush=True)
 
 def worker_loop(queue_name, blocking, stdout):
@@ -24,11 +24,12 @@ def worker_loop(queue_name, blocking, stdout):
 
 def start(queue_name, blocking):
     idx = atomic_counter.fetch_and_add(settings.worker_counter_filepath(), 1)
-    tee = subprocess.Popen(["tee", settings.worker_log_filepath(idx)], stdin=subprocess.PIPE, encoding="utf-8")
-    print("Kochi worker {} started.".format(idx), file=tee.stdin, flush=True)
-    worker_loop(queue_name, blocking, tee.stdin)
-    print("Kochi worker {} finished.".format(idx), file=tee.stdin, flush=True)
-    tee.stdin.close()
+    workspace = settings.worker_workspace_dirpath(idx)
+    with util.tmpdir(workspace):
+        with subprocess.Popen(["tee", settings.worker_log_filepath(idx)], stdin=subprocess.PIPE, encoding="utf-8") as tee:
+            print("Kochi worker {} started.".format(idx), file=tee.stdin, flush=True)
+            worker_loop(queue_name, blocking, tee.stdin)
+            print("Kochi worker {} finished.".format(idx), file=tee.stdin, flush=True)
 
 if __name__ == "__main__":
     """

@@ -34,6 +34,9 @@ def worker_counter_filepath():
 def worker_log_filepath(idx):
     return os.path.join(worker_dirpath(), "log_{}.txt".format(idx))
 
+def worker_workspace_dirpath(idx):
+    return os.path.join(worker_dirpath(), "workspace_{}".format(idx))
+
 # Jobs
 # -----------------------------------------------------------------------------
 
