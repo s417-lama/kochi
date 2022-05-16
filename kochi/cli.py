@@ -5,6 +5,7 @@ from . import settings
 from . import stats
 from . import worker
 from . import job_queue
+from . import context
 
 @click.group()
 def cli():
@@ -34,11 +35,16 @@ def alloc_interact_cmd(machine, nodes):
 @click.argument("machine", required=True, nargs=1)
 @click.argument("commands", required=True, nargs=-1, type=click.UNPROCESSED)
 @click.option("-q", "--queue", metavar="QUEUE", required=True, help="Queue to enqueue a job")
-def enqueue_cmd(machine, commands, queue):
+@click.option("-c", "--with-context", is_flag=True, default=False, help="Whether to create context of the current git repository")
+@click.option("-g", "--git-remote", help="URL or path to remote git repository. Defaults to origin.")
+def enqueue_cmd(machine, commands, queue, with_context, git_remote):
     """
     Enqueues a job that runs commands COMMANDS to queue QUEUE on machine MACHINE.
     """
-    job = job_queue.Job(name="", dependencies="", context="", commands=list(commands))
+    if with_context and not util.is_inside_git_dir():
+        raise click.UsageError("--with-context (-c) option must be used inside a git directory.")
+    ctx = context.create(git_remote) if with_context else None
+    job = job_queue.Job(name="", dependencies="", context=ctx, commands=list(commands))
     if machine == "local":
         job_queue.push(queue, job)
     else:

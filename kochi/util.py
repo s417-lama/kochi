@@ -4,6 +4,8 @@ import shutil
 import pickle
 import base64
 import contextlib
+import pathlib
+import urllib
 
 def run_command_ssh(host, commands):
     subprocess.run("ssh -o LogLevel=QUIET -t {} '{}'".format(host, commands), shell=True)
@@ -31,3 +33,23 @@ def tmpdir(path):
             yield
     finally:
         shutil.rmtree(path)
+
+def get_path(s):
+    try:
+        parsed = urllib.parse.urlparse(s)
+        if parsed.scheme and parsed.netloc:
+            return parsed.path
+        else:
+            return s
+    except:
+        return s
+
+def git_repo_name(git_remote):
+    return pathlib.Path(get_path(git_remote)).stem
+
+def is_inside_git_dir():
+    try:
+        result = subprocess.run(["git", "rev-parse", "--is-inside-work-tree"], stdout=subprocess.PIPE, check=True, encoding="utf-8").stdout.strip()
+        return result == "true"
+    except subprocess.CalledProcessError:
+        return False
