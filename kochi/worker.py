@@ -1,5 +1,6 @@
 import subprocess
 import time
+import click
 
 from . import util
 from . import settings
@@ -8,11 +9,13 @@ from . import atomic_counter
 from . import context
 
 def run_job(job, stdout):
-    print("Kochi job {} (ID={}) started.".format(job.name, job.id), file=stdout, flush=True)
+    color = "blue"
+    print(click.style("Kochi job {} (ID={}) started.".format(job.name, job.id), fg=color), file=stdout, flush=True)
+    print(click.style("-" * 80, fg=color), file=stdout, flush=True)
     with context.context(job.context):
         with subprocess.Popen(["tee", settings.job_log_filepath(job.id)], stdin=subprocess.PIPE, stdout=stdout, encoding="utf-8") as tee:
-            subprocess.run(job.commands, shell=not isinstance(job.commands, list), stdout=tee.stdin)
-    print("Kochi job {} (ID={}) finished.".format(job.name, job.id), file=stdout, flush=True)
+            subprocess.run(job.commands, shell=not isinstance(job.commands, list), stdout=tee.stdin, stderr=tee.stdin)
+    print(click.style("-" * 80, fg=color), file=stdout, flush=True)
 
 def worker_loop(queue_name, blocking, stdout):
     while True:
@@ -29,9 +32,11 @@ def start(queue_name, blocking):
     workspace = settings.worker_workspace_dirpath(idx)
     with util.tmpdir(workspace):
         with subprocess.Popen(["tee", settings.worker_log_filepath(idx)], stdin=subprocess.PIPE, encoding="utf-8") as tee:
-            print("Kochi worker {} started.".format(idx), file=tee.stdin, flush=True)
+            color = "green"
+            print(click.style("Kochi worker {} started.".format(idx), fg=color), file=tee.stdin, flush=True)
+            print(click.style("=" * 80, fg=color), file=tee.stdin, flush=True)
             worker_loop(queue_name, blocking, tee.stdin)
-            print("Kochi worker {} finished.".format(idx), file=tee.stdin, flush=True)
+            print(click.style("=" * 80, fg=color), file=tee.stdin, flush=True)
 
 if __name__ == "__main__":
     """

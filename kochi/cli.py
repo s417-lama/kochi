@@ -116,7 +116,8 @@ def show_log_worker_cmd(worker_id):
     """
     Show a log file of worker WORKER_ID.
     """
-    stats.show_worker_log(worker_id)
+    with open(settings.worker_log_filepath(worker_id)) as f:
+        click.echo_via_pager(f)
 
 @log.command(name="job")
 @click.argument("job_id", required=True, type=int)
@@ -124,7 +125,8 @@ def show_log_job_cmd(job_id):
     """
     Show a log file of job JOB_ID.
     """
-    stats.show_job_log(job_id)
+    with open(settings.job_log_filepath(job_id)) as f:
+        click.echo_via_pager(f)
 
 # show path
 # -----------------------------------------------------------------------------
