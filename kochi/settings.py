@@ -1,5 +1,5 @@
 import os
-import toml
+import yaml
 
 from . import atomic_counter
 
@@ -7,11 +7,11 @@ def root_path():
     return os.environ.get("KOCHI_ROOT", os.path.join(os.path.expanduser("~"), ".kochi"))
 
 def config_filepath():
-    return os.path.join(root_path(), "conf.toml")
+    return os.path.join(root_path(), "conf.yaml")
 
 def config():
     with open(config_filepath(), "r") as f:
-        return toml.load(f)
+        return yaml.safe_load(f)
 
 # Queues
 # -----------------------------------------------------------------------------
