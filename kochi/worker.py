@@ -5,11 +5,13 @@ from . import util
 from . import settings
 from . import job_queue
 from . import atomic_counter
+from . import context
 
 def run_job(job, stdout):
     print("Kochi job {} (ID={}) started.".format(job.name, job.id), file=stdout, flush=True)
-    with subprocess.Popen(["tee", settings.job_log_filepath(job.id)], stdin=subprocess.PIPE, stdout=stdout, encoding="utf-8") as tee:
-        subprocess.run(job.commands, shell=not isinstance(job.commands, list), stdout=tee.stdin)
+    with context.context(job.context):
+        with subprocess.Popen(["tee", settings.job_log_filepath(job.id)], stdin=subprocess.PIPE, stdout=stdout, encoding="utf-8") as tee:
+            subprocess.run(job.commands, shell=not isinstance(job.commands, list), stdout=tee.stdin)
     print("Kochi job {} (ID={}) finished.".format(job.name, job.id), file=stdout, flush=True)
 
 def worker_loop(queue_name, blocking, stdout):
@@ -36,7 +38,17 @@ if __name__ == "__main__":
     machine1$ python3 -m kochi.worker
     machine2$ python3 -m kochi.worker
     """
+    import os
+    import pathlib
     queue_name = "test"
-    for i in range(100):
-        job_queue.push(queue_name, job_queue.Job("test_job_{}".format(i), [], "", "sleep 0.1; echo job {} completed".format(i)))
+    test_filename = "test.txt"
+    repo_path = pathlib.Path(__file__).parent.parent.absolute()
+    print(repo_path)
+    with util.cwd(repo_path):
+        for i in range(100):
+            with open(test_filename, "w+") as f:
+                print("File for job {}".format(i), file=f)
+            ctx = context.create(repo_path)
+            job_queue.push(queue_name, job_queue.Job("test_job_{}".format(i), [], ctx, "sleep 0.1; cat {}".format(test_filename)))
+    os.remove(test_filename)
     start(queue_name, False)

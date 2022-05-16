@@ -5,12 +5,12 @@ from . import settings
 from . import locked_queue
 from . import atomic_counter
 
-Job = namedtuple("Job", ["name", "dependencies", "environment", "commands"])
-JobEnqueued = namedtuple("JobEnqueued", ["id", "name", "dependencies", "environment", "commands"])
+Job = namedtuple("Job", ["name", "dependencies", "context", "commands"])
+JobEnqueued = namedtuple("JobEnqueued", ["id", "name", "dependencies", "context", "commands"])
 
 def push(queue_name, job):
     idx = atomic_counter.fetch_and_add(settings.job_counter_filepath(), 1)
-    job_enqueued = JobEnqueued(idx, job.name, job.dependencies, job.environment, job.commands)
+    job_enqueued = JobEnqueued(idx, job.name, job.dependencies, job.context, job.commands)
     job_str = util.serialize(job_enqueued)
     locked_queue.push(settings.queue_filepath(queue_name), job_str)
 
@@ -26,9 +26,9 @@ if __name__ == "__main__":
     $ python3 -m kochi.job_queue
     """
     queue_name = "test"
-    push(queue_name, Job("test_job1", ["aaa"]       , "env", "commands"))
-    push(queue_name, Job("test_job2", ["bbb"]       , "env", "commands"))
-    push(queue_name, Job("test_job3", ["ccc", "ddd"], "env", "commands"))
+    push(queue_name, Job("test_job1", ["aaa"]       , "context", "commands"))
+    push(queue_name, Job("test_job2", ["bbb"]       , "context", "commands"))
+    push(queue_name, Job("test_job3", ["ccc", "ddd"], "context", "commands"))
     print(pop(queue_name))
     print(pop(queue_name))
     print(pop(queue_name))

@@ -38,7 +38,7 @@ def enqueue_cmd(machine, commands, queue):
     """
     Enqueues a job that runs commands COMMANDS to queue QUEUE on machine MACHINE.
     """
-    job = job_queue.Job(name="", dependencies="", environment="", commands=list(commands))
+    job = job_queue.Job(name="", dependencies="", context="", commands=list(commands))
     if machine == "local":
         job_queue.push(queue, job)
     else:
