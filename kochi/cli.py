@@ -1,3 +1,5 @@
+import os
+import sys
 import click
 
 from . import util
@@ -133,8 +135,14 @@ def path():
 
 @path.command(name="project")
 @click.argument("project_name", required=True, type=str)
-def show_path_project_cmd(project_name):
+@click.option("-f", "--force", is_flag=True, default=False, help="Force to show the project path even if the project does not exist")
+def show_path_project_cmd(project_name, force):
     """
     Show a path to PROJECT_NAME.
     """
-    print(settings.project_git_dirpath(project_name))
+    project_path = settings.project_git_dirpath(project_name)
+    if force or os.path.isdir(project_path):
+        print(project_path)
+    else:
+        print("Project '{}' does not exist.".format(project_name), file=sys.stderr)
+        sys.exit(1)
