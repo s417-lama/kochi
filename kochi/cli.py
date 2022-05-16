@@ -1,5 +1,6 @@
 import os
 import sys
+import string
 import click
 
 from . import util
@@ -26,10 +27,32 @@ def alloc_interact_cmd(machine, nodes):
     """
     config = settings.machine_config(machine)
     login_host = config["login_host"]
-    commands_on_login_node = config["alloc_interact"]
+    env_dict = dict(KOCHI_ALLOC_NODE_SPEC=nodes)
+    commands_on_login_node = string.Template(config["alloc_interact"]).substitute(env_dict)
     if "work_dir" in config:
         commands_on_login_node = "cd {} && {}".format(config["work_dir"], commands_on_login_node)
     util.run_command_ssh_interactive(login_host, commands_on_login_node)
+
+# alloc
+# -----------------------------------------------------------------------------
+
+@cli.command(name="alloc")
+@click.argument("machine", required=True)
+@click.option("-q", "--queue", metavar="QUEUE", required=True, help="Queue to work on")
+@click.option("-n", "--nodes", metavar="NODES_SPEC", help="Specification of nodes to be allocated on machine MACHINE")
+@click.option("-d", "--duplicates", metavar="DUPLICATES", type=int, default=1, help="Number of workers to be created")
+def alloc_cmd(machine, queue, nodes, duplicates):
+    """
+    Allocates nodes of NODES_SPEC on machine MACHINE as an interactive job
+    """
+    config = settings.machine_config(machine)
+    login_host = config["login_host"]
+    env_dict = dict(KOCHI_ALLOC_NODE_SPEC=nodes, KOCHI_WORKER_LAUNCH_CMD="kochi work -q {}".format(queue))
+    commands_on_login_node = string.Template(config["alloc"]).substitute(env_dict)
+    if "work_dir" in config:
+        commands_on_login_node = "cd {} && {}".format(config["work_dir"], commands_on_login_node)
+    for i in range(duplicates):
+        util.run_command_ssh(login_host, commands_on_login_node)
 
 # enqueue
 # -----------------------------------------------------------------------------
