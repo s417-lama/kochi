@@ -8,6 +8,9 @@ from . import job_queue
 from . import atomic_counter
 from . import context
 
+def get_worker_id():
+    return atomic_counter.fetch_and_add(settings.worker_counter_filepath(), 1)
+
 def run_job(job, stdout):
     color = "blue"
     print(click.style("Kochi job {} (ID={}) started.".format(job.name, job.id), fg=color), file=stdout, flush=True)
@@ -27,8 +30,8 @@ def worker_loop(queue_name, blocking, stdout):
         else:
             return
 
-def start(queue_name, blocking):
-    idx = atomic_counter.fetch_and_add(settings.worker_counter_filepath(), 1)
+def start(queue_name, blocking, worker_id):
+    idx = get_worker_id() if worker_id == -1 else worker_id
     workspace = settings.worker_workspace_dirpath(idx)
     with util.tmpdir(workspace):
         with subprocess.Popen(["tee", settings.worker_log_filepath(idx)], stdin=subprocess.PIPE, encoding="utf-8") as tee:
@@ -56,4 +59,4 @@ if __name__ == "__main__":
             ctx = context.create(repo_path)
             job_queue.push(queue_name, job_queue.Job("test_job_{}".format(i), [], ctx, "sleep 0.1; cat {}".format(test_filename)))
     os.remove(test_filename)
-    start(queue_name, False)
+    start(queue_name, False, -1)

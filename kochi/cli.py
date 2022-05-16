@@ -1,4 +1,5 @@
 import os
+import subprocess
 import sys
 import string
 import click
@@ -20,7 +21,7 @@ def cli():
 
 @cli.command(name="alloc_interact")
 @click.argument("machine", required=True)
-@click.option("-n", "--nodes", metavar="NODES_SPEC", help="Specification of nodes to be allocated on machine MACHINE")
+@click.option("-n", "--nodes", metavar="NODES_SPEC", default="1", help="Specification of nodes to be allocated on machine MACHINE")
 def alloc_interact_cmd(machine, nodes):
     """
     Allocates nodes of NODES_SPEC on machine MACHINE as an interactive job
@@ -39,7 +40,7 @@ def alloc_interact_cmd(machine, nodes):
 @cli.command(name="alloc")
 @click.argument("machine", required=True)
 @click.option("-q", "--queue", metavar="QUEUE", required=True, help="Queue to work on")
-@click.option("-n", "--nodes", metavar="NODES_SPEC", help="Specification of nodes to be allocated on machine MACHINE")
+@click.option("-n", "--nodes", metavar="NODES_SPEC", default="1", help="Specification of nodes to be allocated on machine MACHINE")
 @click.option("-d", "--duplicates", metavar="DUPLICATES", type=int, default=1, help="Number of workers to be created")
 def alloc_cmd(machine, queue, nodes, duplicates):
     """
@@ -47,12 +48,29 @@ def alloc_cmd(machine, queue, nodes, duplicates):
     """
     config = settings.machine_config(machine)
     login_host = config["login_host"]
-    env_dict = dict(KOCHI_ALLOC_NODE_SPEC=nodes, KOCHI_WORKER_LAUNCH_CMD="kochi work -q {}".format(queue))
-    commands_on_login_node = string.Template(config["alloc"]).substitute(env_dict)
+    command_template_str = util.serialize(config["alloc"])
+    commands_on_login_node = "kochi alloc_aux {} {} -q {} -n {} -d {}".format(machine, command_template_str, queue, nodes, duplicates)
     if "work_dir" in config:
         commands_on_login_node = "cd {} && {}".format(config["work_dir"], commands_on_login_node)
+    util.run_command_ssh_interactive(login_host, commands_on_login_node)
+
+@cli.command(name="alloc_aux", hidden=True)
+@click.argument("machine", required=True)
+@click.argument("command_template_str", required=True)
+@click.option("-q", "--queue", required=True)
+@click.option("-n", "--nodes", required=True)
+@click.option("-d", "--duplicates", type=int, required=True)
+def alloc_aux_cmd(machine, command_template_str, queue, nodes, duplicates):
+    """
+    For internal use only.
+    """
+    command_template = util.deserialize(command_template_str)
     for i in range(duplicates):
-        util.run_command_ssh(login_host, commands_on_login_node)
+        worker_id = worker.get_worker_id()
+        env_dict = dict(KOCHI_ALLOC_NODE_SPEC=nodes, KOCHI_WORKER_LAUNCH_CMD="kochi work -q {} -i {}".format(queue, worker_id))
+        commands = string.Template(command_template).substitute(env_dict)
+        subprocess.run(commands, shell=True, check=True)
+        click.secho("Worker {} submitted.".format(worker_id), fg="green")
 
 # enqueue
 # -----------------------------------------------------------------------------
@@ -97,11 +115,12 @@ def enqueue_raw_cmd(machine, job_string, queue):
 @cli.command(name="work")
 @click.option("-q", "--queue", metavar="QUEUE", required=True, help="Queue to work on")
 @click.option("-b", "--blocking", is_flag=True, default=False, help="Whether to block to wait for job arrival")
-def work_cmd(queue, blocking):
+@click.option("-i", "--worker-id", type=int, default=-1, hidden=True, help="For internal use only")
+def work_cmd(queue, blocking, worker_id):
     """
     Start a new worker that works on queue QUEUE.
     """
-    worker.start(queue, blocking)
+    worker.start(queue, blocking, worker_id)
 
 # show
 # -----------------------------------------------------------------------------
