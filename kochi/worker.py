@@ -1,3 +1,4 @@
+import os
 import subprocess
 import time
 import click
@@ -8,37 +9,45 @@ from . import job_queue
 from . import atomic_counter
 from . import context
 
-def get_worker_id():
-    return atomic_counter.fetch_and_add(settings.worker_counter_filepath(), 1)
+def get_worker_id(machine):
+    return atomic_counter.fetch_and_add(settings.worker_counter_filepath(machine), 1)
 
-def run_job(job, stdout):
+def run_job(job, machine, stdout):
     color = "blue"
     print(click.style("Kochi job {} (ID={}) started.".format(job.name, job.id), fg=color), file=stdout, flush=True)
     print(click.style("-" * 80, fg=color), file=stdout, flush=True)
     with context.context(job.context):
-        with subprocess.Popen(["tee", settings.job_log_filepath(job.id)], stdin=subprocess.PIPE, stdout=stdout, encoding="utf-8") as tee:
-            subprocess.run(job.commands, shell=not isinstance(job.commands, list), stdout=tee.stdin, stderr=tee.stdin)
+        with subprocess.Popen(["tee", settings.job_log_filepath(machine, job.id)], stdin=subprocess.PIPE, stdout=stdout, encoding="utf-8") as tee:
+            env = os.environ.copy()
+            env["KOCHI_JOB_ID"] = str(job.id)
+            env["KOCHI_JOB_NAME"] = job.name
+            for dep, recipe in job.dependencies:
+                env["KOCHI_DEP_" + dep.upper()] = settings.project_dep_install_dirpath(job.context.project, machine, dep, recipe)
+            try:
+                subprocess.run(job.commands, env=env, shell=not isinstance(job.commands, list), stdout=tee.stdin, stderr=tee.stdin, check=True)
+            except Exception as e:
+                print(str(e), file=tee.stdin, flush=True)
     print(click.style("-" * 80, fg=color), file=stdout, flush=True)
 
-def worker_loop(queue_name, blocking, stdout):
+def worker_loop(queue_name, blocking, machine, stdout):
     while True:
-        job = job_queue.pop(queue_name)
+        job = job_queue.pop(machine, queue_name)
         if job:
-            run_job(job, stdout)
+            run_job(job, machine, stdout)
         elif blocking:
             time.sleep(0.1) # TODO: monitor filesystem events?
         else:
             return
 
-def start(queue_name, blocking, worker_id):
-    idx = get_worker_id() if worker_id == -1 else worker_id
-    workspace = settings.worker_workspace_dirpath(idx)
+def start(queue_name, blocking, worker_id, machine):
+    idx = get_worker_id(machine) if worker_id == -1 else worker_id
+    workspace = settings.worker_workspace_dirpath(machine, idx)
     with util.tmpdir(workspace):
-        with subprocess.Popen(["tee", settings.worker_log_filepath(idx)], stdin=subprocess.PIPE, encoding="utf-8") as tee:
+        with subprocess.Popen(["tee", settings.worker_log_filepath(machine, idx)], stdin=subprocess.PIPE, encoding="utf-8") as tee:
             color = "green"
-            print(click.style("Kochi worker {} started.".format(idx), fg=color), file=tee.stdin, flush=True)
+            print(click.style("Kochi worker {} started on machine {}.".format(idx, machine), fg=color), file=tee.stdin, flush=True)
             print(click.style("=" * 80, fg=color), file=tee.stdin, flush=True)
-            worker_loop(queue_name, blocking, tee.stdin)
+            worker_loop(queue_name, blocking, machine, tee.stdin)
             print(click.style("=" * 80, fg=color), file=tee.stdin, flush=True)
 
 if __name__ == "__main__":
@@ -46,7 +55,6 @@ if __name__ == "__main__":
     machine1$ python3 -m kochi.worker
     machine2$ python3 -m kochi.worker
     """
-    import os
     import pathlib
     queue_name = "test"
     test_filename = "test.txt"
@@ -57,6 +65,6 @@ if __name__ == "__main__":
             with open(test_filename, "w+") as f:
                 print("File for job {}".format(i), file=f)
             ctx = context.create(repo_path)
-            job_queue.push(queue_name, job_queue.Job("test_job_{}".format(i), [], ctx, "sleep 0.1; cat {}".format(test_filename)))
+            job_queue.push(job_queue.Job("test_job_{}".format(i), "local", queue_name, [], ctx, "sleep 0.1; cat {}".format(test_filename)))
     os.remove(test_filename)
-    start(queue_name, False, -1)
+    start(queue_name, False, -1, "local")

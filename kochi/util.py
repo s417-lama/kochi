@@ -8,13 +8,23 @@ import contextlib
 import pathlib
 import urllib
 
+def decorate_command(commands, **opts):
+    cmds = []
+    if opts.get("env"):
+        for k, v in opts.get("env").items():
+            cmds.append("export {}={}".format(k, v))
+    if opts.get("cwd"):
+        cmds.append("cd " + opts.get("cwd"))
+    cmds.append(commands)
+    return " && ".join(cmds)
+
 def run_command_ssh_interactive(host, commands, **opts):
-    cmd = "cd {} && {}".format(opts.get("cwd"), commands) if opts.get("cwd") else commands
-    subprocess.run("ssh -o LogLevel=QUIET -t {} \"{}\"".format(host, cmd), shell=True)
+    subprocess.run("ssh -o LogLevel=QUIET -t {} \"{}\"".format(host, decorate_command(commands, **opts)),
+                   shell=True)
 
 def run_command_ssh(host, commands, **opts):
-    cmd = "cd {} && {}".format(opts.get("cwd"), commands) if opts.get("cwd") else commands
-    return subprocess.run("ssh -o LogLevel=QUIET {} \"{}\"".format(host, cmd), shell=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, encoding="utf-8", check=True).stdout
+    return subprocess.run("ssh -o LogLevel=QUIET {} \"{}\"".format(host, decorate_command(commands, **opts)),
+                          shell=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, encoding="utf-8", check=True).stdout
 
 def serialize(obj):
     return base64.b64encode(pickle.dumps(obj)).decode()
