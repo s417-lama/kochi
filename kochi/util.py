@@ -12,7 +12,7 @@ def decorate_command(commands, **opts):
     cmds = []
     if opts.get("env"):
         for k, v in opts.get("env").items():
-            cmds.append("export {}={}".format(k, v))
+            cmds.append("export {}=\"{}\"".format(k, v))
     if opts.get("cwd"):
         cmds.append("cd " + opts.get("cwd"))
     cmds.append(commands)

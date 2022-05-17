@@ -210,7 +210,7 @@ def show_queues_cmd(machine, on_machine):
 @on_machine_option
 def show_workers_cmd(machine, on_machine):
     if machine == "local" or on_machine:
-        stats.show_workers()
+        stats.show_workers(machine)
     else:
         login_host = settings.machine_config(machine)["login_host"]
         util.run_command_ssh_interactive(login_host, "kochi show workers -m {} --on-machine".format(machine))
@@ -220,7 +220,7 @@ def show_workers_cmd(machine, on_machine):
 @on_machine_option
 def show_jobs_cmd(machine, on_machine):
     if machine == "local" or on_machine:
-        stats.show_jobs()
+        stats.show_jobs(machine)
     else:
         login_host = settings.machine_config(machine)["login_host"]
         util.run_command_ssh_interactive(login_host, "kochi show jobs -m {} --on-machine".format(machine))
