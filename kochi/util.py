@@ -76,3 +76,9 @@ def toplevel_git_dirpath():
     except subprocess.CalledProcessError:
         print("This command must be called inside a git project.", file=sys.stderr)
         sys.exit(1)
+
+def ssh_keygen(keypath):
+    subprocess.run(["ssh-keygen", "-t", "rsa", "-f", keypath, "-N", "", "-q"], check=True)
+
+def ssh_to_machine(clientkey_path, port, host):
+    subprocess.run("ssh -t -i {} -p {} -o StrictHostKeyChecking=no -q {}".format(clientkey_path, port, host), shell=True)

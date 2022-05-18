@@ -1,6 +1,7 @@
 import os
 import yaml
 
+from . import util
 from . import atomic_counter
 
 def root_path():
@@ -70,6 +71,40 @@ def project_dep_config(project_name):
 def project_dep_recipe_config(project_name, recipe_name):
     return project_dep_config(project_name)["recipes"][recipe_name]
 
+# sshd
+# -----------------------------------------------------------------------------
+
+def sshd_dirpath():
+    return os.path.join(root_path(), "sshd")
+
+def sshd_etc_dirpath():
+    return os.path.join(sshd_dirpath(), "etc")
+
+def sshd_hostkey_filepath():
+    return os.path.join(sshd_etc_dirpath(), "ssh_host_rsa_key")
+
+def sshd_clientkey_filepath():
+    return os.path.join(sshd_etc_dirpath(), "ssh_client_rsa_key")
+
+def sshd_clientpubkey_filepath():
+    return os.path.join(sshd_etc_dirpath(), "ssh_client_rsa_key.pub")
+
+def sshd_config_filepath():
+    return os.path.join(sshd_etc_dirpath(), "sshd_config")
+
+def sshd_var_run_dirpath(machine, worker_id):
+    return os.path.join(worker_workspace_dirpath(machine, worker_id), "var", "run")
+
+def sshd_authorized_keys_filepath():
+    return os.path.join(sshd_etc_dirpath(), "authorized_keys")
+
+def sshd_port():
+    return os.environ.get("KOCHI_SSH_PORT", 2022)
+
+def sshd_config():
+    return """HostKey {}
+AuthorizedKeysFile {}""".format(sshd_hostkey_filepath(), sshd_authorized_keys_filepath())
+
 # Machine
 # -----------------------------------------------------------------------------
 
@@ -77,7 +112,19 @@ def machine_config(machine):
     return config()["machines"][machine]
 
 def ensure_init():
-    os.makedirs(project_dirpath(), exist_ok=True)
+    os.makedirs(project_dirpath() , exist_ok=True)
+    os.makedirs(sshd_dirpath()    , exist_ok=True)
+    os.makedirs(sshd_etc_dirpath(), exist_ok=True)
+    if not os.path.isfile(sshd_hostkey_filepath()):
+        util.ssh_keygen(sshd_hostkey_filepath())
+    if not os.path.isfile(sshd_clientkey_filepath()):
+        util.ssh_keygen(sshd_clientkey_filepath())
+        with open(sshd_authorized_keys_filepath(), "w") as fw:
+            with open(sshd_clientpubkey_filepath(), "r") as fr:
+                fw.write(fr.read())
+    if not os.path.isfile(sshd_config_filepath()):
+        with open(sshd_config_filepath(), "w") as f:
+            f.write(sshd_config())
 
 def ensure_init_machine(machine):
     os.makedirs(queue_dirpath(machine) , exist_ok=True)

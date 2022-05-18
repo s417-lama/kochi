@@ -15,6 +15,8 @@ from . import project
 machine_option = click.option("-m", "--machine", metavar="MACHINE", default="local", help="Machine name",
                               callback=lambda _c, _p, v: (settings.ensure_init_machine(v), v)[-1])
 
+on_machine_option = click.option("--on-machine", is_flag=True, default=False, hidden=True)
+
 @click.group()
 def cli():
     settings.ensure_init()
@@ -126,6 +128,27 @@ def enqueue_aux_cmd(machine, job_serialized):
     job = util.deserialize(job_serialized)
     job_queue.push(job)
 
+# inspect
+# -----------------------------------------------------------------------------
+
+@cli.command(name="inspect")
+@machine_option
+@on_machine_option
+@click.argument("worker_id", type=int, required=True)
+def inspect_cmd(machine, on_machine, worker_id):
+    """
+    Inspect worker of WORKER_ID by connecting to the machine where the worker is running.
+    """
+    if machine == "local":
+        raise click.UsageError("MACHINE cannot be 'local'.")
+    if on_machine:
+        keypath = settings.sshd_clientkey_filepath()
+        port = settings.sshd_port()
+        util.ssh_to_machine(keypath, port, machine)
+    else:
+        login_host = settings.machine_config(machine)["login_host"]
+        util.run_command_ssh_interactive(login_host, "kochi inspect -m {} --on-machine {}".format(machine, worker_id))
+
 # work
 # -----------------------------------------------------------------------------
 
@@ -188,8 +211,6 @@ def install_aux_cmd(machine, args_serialized):
 
 # show
 # -----------------------------------------------------------------------------
-
-on_machine_option = click.option("--on-machine", is_flag=True, default=False, hidden=True)
 
 @cli.group()
 def show():
