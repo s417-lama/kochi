@@ -7,6 +7,7 @@ import base64
 import contextlib
 import pathlib
 import urllib
+import textwrap
 
 def decorate_command(commands, **opts):
     cmds = []
@@ -80,5 +81,6 @@ def toplevel_git_dirpath():
 def ssh_keygen(keypath):
     subprocess.run(["ssh-keygen", "-t", "rsa", "-f", keypath, "-N", "", "-q"], check=True)
 
-def ssh_to_machine(clientkey_path, port, host):
-    subprocess.run("ssh -t -i {} -p {} -o StrictHostKeyChecking=no -q {}".format(clientkey_path, port, host), shell=True)
+def dedent(string, **opts):
+    indent = opts.get("indent", 0)
+    return textwrap.indent(textwrap.dedent(string.strip("\n")), " " * indent)

@@ -11,6 +11,7 @@ from . import worker
 from . import job_queue
 from . import context
 from . import project
+from . import sshd
 
 machine_option = click.option("-m", "--machine", metavar="MACHINE", default="local", help="Machine name",
                               callback=lambda _c, _p, v: (settings.ensure_init_machine(v), v)[-1])
@@ -142,9 +143,7 @@ def inspect_cmd(machine, on_machine, worker_id):
     if machine == "local":
         raise click.UsageError("MACHINE cannot be 'local'.")
     if on_machine:
-        keypath = settings.sshd_clientkey_filepath()
-        port = settings.sshd_port()
-        util.ssh_to_machine(keypath, port, machine)
+        sshd.login_to_machine(machine, worker_id)
     else:
         login_host = settings.machine_config(machine)["login_host"]
         util.run_command_ssh_interactive(login_host, "kochi inspect -m {} --on-machine {}".format(machine, worker_id))

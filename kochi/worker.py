@@ -3,14 +3,12 @@ import subprocess
 import time
 import click
 
-import contextlib
-import psutil
-
 from . import util
 from . import settings
 from . import job_queue
 from . import atomic_counter
 from . import context
+from . import sshd
 
 def get_worker_id(machine):
     return atomic_counter.fetch_and_add(settings.worker_counter_filepath(machine), 1)
@@ -42,24 +40,11 @@ def worker_loop(queue_name, blocking, machine, stdout):
         else:
             return
 
-@contextlib.contextmanager
-def sshd(machine, worker_id):
-    os.makedirs(settings.sshd_var_run_dirpath(machine, worker_id), exist_ok=True)
-    with subprocess.Popen(["/usr/sbin/sshd", "-f", settings.sshd_config_filepath(), "-D",
-                           "-o", "PidFile={}/sshd.pid".format(settings.sshd_var_run_dirpath(machine, worker_id)),
-                           "-p", str(settings.sshd_port())], preexec_fn=os.setsid) as sshd:
-        try:
-            yield
-        finally:
-            for p in psutil.Process(sshd.pid).children(recursive=True):
-                p.terminate()
-            sshd.terminate()
-
 def start(queue_name, blocking, worker_id, machine):
     idx = get_worker_id(machine) if worker_id == -1 else worker_id
     workspace = settings.worker_workspace_dirpath(machine, idx)
     with util.tmpdir(workspace):
-        with sshd(machine, idx):
+        with sshd.sshd(machine, idx):
             with subprocess.Popen(["tee", settings.worker_log_filepath(machine, idx)], stdin=subprocess.PIPE, encoding="utf-8") as tee:
                 color = "green"
                 print(click.style("Kochi worker {} started on machine {}.".format(idx, machine), fg=color), file=tee.stdin, flush=True)

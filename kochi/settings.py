@@ -89,21 +89,26 @@ def sshd_clientkey_filepath():
 def sshd_clientpubkey_filepath():
     return os.path.join(sshd_etc_dirpath(), "ssh_client_rsa_key.pub")
 
+def sshd_authorized_keys_filepath():
+    return os.path.join(sshd_etc_dirpath(), "authorized_keys")
+
+def sshd_config():
+    return util.dedent("""
+        HostKey {}
+        AuthorizedKeysFile {}
+        """.format(sshd_hostkey_filepath(), sshd_authorized_keys_filepath()))
+
 def sshd_config_filepath():
     return os.path.join(sshd_etc_dirpath(), "sshd_config")
 
 def sshd_var_run_dirpath(machine, worker_id):
     return os.path.join(worker_workspace_dirpath(machine, worker_id), "var", "run")
 
-def sshd_authorized_keys_filepath():
-    return os.path.join(sshd_etc_dirpath(), "authorized_keys")
+def sshd_client_config_filepath(machine, worker_id):
+    return os.path.join(sshd_var_run_dirpath(machine, worker_id), "ssh_client_config")
 
 def sshd_port():
     return os.environ.get("KOCHI_SSH_PORT", 2022)
-
-def sshd_config():
-    return """HostKey {}
-AuthorizedKeysFile {}""".format(sshd_hostkey_filepath(), sshd_authorized_keys_filepath())
 
 # Machine
 # -----------------------------------------------------------------------------
