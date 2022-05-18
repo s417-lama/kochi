@@ -20,11 +20,11 @@ def decorate_command(commands, **opts):
     return " && ".join(cmds)
 
 def run_command_ssh_interactive(host, commands, **opts):
-    subprocess.run("ssh -o LogLevel=QUIET -t {} \"{}\"".format(host, decorate_command(commands, **opts)),
+    subprocess.run("ssh -o LogLevel=QUIET -t {} '{}'".format(host, decorate_command(commands, **opts)),
                    shell=True)
 
 def run_command_ssh(host, commands, **opts):
-    return subprocess.run("ssh -o LogLevel=QUIET {} \"{}\"".format(host, decorate_command(commands, **opts)),
+    return subprocess.run("ssh -o LogLevel=QUIET {} '{}'".format(host, decorate_command(commands, **opts)),
                           shell=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, encoding="utf-8", check=True).stdout
 
 def serialize(obj):
