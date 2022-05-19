@@ -153,7 +153,8 @@ def enqueue_aux_cmd(machine, job_serialized):
     For internal use only.
     """
     job = util.deserialize(job_serialized)
-    job_queue.push(job)
+    job_enqueued = job_queue.push(job)
+    click.secho("Job {} submitted on machine {}.".format(job_enqueued.id, machine), fg="blue")
 
 # inspect
 # -----------------------------------------------------------------------------
@@ -212,8 +213,7 @@ def install_cmd(click_ctx, machine, dependency, recipe_name, git_remote):
         if not git_remote:
             project.sync(login_host)
         ctx = context.create_with_project_config(dep_config, git_remote)
-    commands = "\n".join(dep_config["commands"]) if isinstance(dep_config["commands"], list) else dep_config["commands"]
-    args = InstallArgs(project_name, dependency, recipe_name, ctx, commands)
+    args = InstallArgs(project_name, dependency, recipe_name, ctx, dep_config["commands"])
     if machine == "local":
         click_ctx.invoke(install_aux_cmd, args_serialized=util.serialize(args))
     else:

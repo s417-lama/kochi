@@ -16,7 +16,7 @@ def decorate_command(commands, **opts):
             cmds.append("export {}=\"{}\"".format(k, v))
     if opts.get("cwd"):
         cmds.append("cd " + opts.get("cwd"))
-    cmds.append(commands)
+    cmds.append("\n".join(commands) if isinstance(commands, list) else commands)
     return " && ".join(cmds)
 
 def run_command_ssh_interactive(host, commands, **opts):
