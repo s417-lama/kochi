@@ -68,14 +68,15 @@ def alloc_interact_cmd(machine, nodes):
 # alloc
 # -----------------------------------------------------------------------------
 
-AllocArgs = namedtuple("AllocArgs", ["queue", "nodes", "duplicates", "commands"])
+AllocArgs = namedtuple("AllocArgs", ["queue", "nodes", "duplicates", "time_limit", "commands"])
 
 @cli.command(name="alloc")
 @machine_option
 @click.option("-q", "--queue", metavar="QUEUE", required=True, help="Queue to work on")
 @click.option("-n", "--nodes", metavar="NODES_SPEC", default="1", help="Specification of nodes to be allocated on machine MACHINE")
 @click.option("-d", "--duplicates", metavar="DUPLICATES", type=int, default=1, help="Number of workers to be created")
-def alloc_cmd(machine, queue, nodes, duplicates):
+@click.option("-t", "--time-limit", metavar="TIME_LIMIT", default="0", help="Time limit for the system job")
+def alloc_cmd(machine, queue, nodes, duplicates, time_limit):
     """
     Allocates nodes of NODES_SPEC on machine MACHINE as an interactive job
     """
@@ -83,7 +84,7 @@ def alloc_cmd(machine, queue, nodes, duplicates):
         raise click.UsageError("MACHINE cannot be 'local'.")
     config = settings.machine_config(machine)
     login_host = config["login_host"]
-    args = AllocArgs(queue, nodes, duplicates, config["alloc"])
+    args = AllocArgs(queue, nodes, duplicates, time_limit, config["alloc"])
     util.run_command_ssh_interactive(login_host, "kochi alloc_aux -m {} {}".format(machine, util.serialize(args)),
                                      cwd=config.get("work_dir"))
 
@@ -99,6 +100,7 @@ def alloc_aux_cmd(machine, args_serialized):
         worker_id = worker.get_worker_id(machine)
         env_dict = dict(
             KOCHI_ALLOC_NODE_SPEC=args.nodes,
+            KOCHI_ALLOC_TIME_LIMIT=args.time_limit,
             KOCHI_WORKER_LAUNCH_CMD="kochi work -m {} -q {} -i {}".format(machine, args.queue, worker_id),
         )
         try:
