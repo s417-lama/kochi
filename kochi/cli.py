@@ -2,6 +2,7 @@ from collections import namedtuple
 import os
 import subprocess
 import sys
+import functools
 import click
 
 from . import util
@@ -21,6 +22,31 @@ on_machine_option = click.option("--on-machine", is_flag=True, default=False, hi
 @click.group()
 def cli():
     settings.ensure_init()
+
+@cli.command(name="on_machine_aux", hidden=True)
+@machine_option
+@click.argument("cmd_serialized")
+@click.pass_context
+def on_machine_aux_cmd(click_ctx, machine, cmd_serialized):
+    cmd = util.deserialize(cmd_serialized)
+    click_ctx.invoke(globals()[cmd["funcname"]], machine=machine, on_machine=True, **cmd["kwargs"])
+
+def on_machine_cmd(group, name):
+    def decorator(f):
+        @group.command(name=name)
+        @machine_option
+        @on_machine_option
+        @functools.wraps(f)
+        def wrapper(machine, on_machine, *args, **kwargs):
+            if machine == "local" or on_machine:
+                f(machine, *args, **kwargs)
+            else:
+                args_serialized = util.serialize(dict(funcname=f.__name__, kwargs=kwargs))
+                cmd_on_machine = "kochi on_machine_aux -m {} {}".format(machine, args_serialized)
+                login_host = settings.machine_config(machine)["login_host"]
+                util.run_command_ssh_interactive(login_host, cmd_on_machine)
+        return wrapper
+    return decorator
 
 # alloc_interact
 # -----------------------------------------------------------------------------
@@ -215,45 +241,21 @@ def install_aux_cmd(machine, args_serialized):
 def show():
     pass
 
-@show.command(name="queues")
-@machine_option
-@on_machine_option
-def show_queues_cmd(machine, on_machine):
-    if machine == "local" or on_machine:
-        stats.show_queues(machine)
-    else:
-        login_host = settings.machine_config(machine)["login_host"]
-        util.run_command_ssh_interactive(login_host, "kochi show queues -m {} --on-machine".format(machine))
+@on_machine_cmd(show, "queues")
+def show_queues_cmd(machine):
+    stats.show_queues(machine)
 
-@show.command(name="workers")
-@machine_option
-@on_machine_option
-def show_workers_cmd(machine, on_machine):
-    if machine == "local" or on_machine:
-        stats.show_workers(machine)
-    else:
-        login_host = settings.machine_config(machine)["login_host"]
-        util.run_command_ssh_interactive(login_host, "kochi show workers -m {} --on-machine".format(machine))
+@on_machine_cmd(show, "workers")
+def show_workers_cmd(machine):
+    stats.show_workers(machine)
 
-@show.command(name="jobs")
-@machine_option
-@on_machine_option
-def show_jobs_cmd(machine, on_machine):
-    if machine == "local" or on_machine:
-        stats.show_jobs(machine)
-    else:
-        login_host = settings.machine_config(machine)["login_host"]
-        util.run_command_ssh_interactive(login_host, "kochi show jobs -m {} --on-machine".format(machine))
+@on_machine_cmd(show, "jobs")
+def show_jobs_cmd(machine):
+    stats.show_jobs(machine)
 
-@show.command(name="projects")
-@machine_option
-@on_machine_option
-def show_projects_cmd(machine, on_machine):
-    if machine == "local" or on_machine:
-        stats.show_projects()
-    else:
-        login_host = settings.machine_config(machine)["login_host"]
-        util.run_command_ssh_interactive(login_host, "kochi show projects -m {} --on-machine".format(machine))
+@on_machine_cmd(show, "projects")
+def show_projects_cmd(machine):
+    stats.show_projects()
 
 # show log
 # -----------------------------------------------------------------------------
@@ -262,35 +264,23 @@ def show_projects_cmd(machine, on_machine):
 def log():
     pass
 
-@log.command(name="worker")
-@machine_option
-@on_machine_option
+@on_machine_cmd(log, "worker")
 @click.argument("worker_id", required=True, type=int)
-def show_log_worker_cmd(machine, on_machine, worker_id):
+def show_log_worker_cmd(machine, worker_id):
     """
     Show a log file of worker WORKER_ID on machine MACHINE.
     """
-    if machine == "local" or on_machine:
-        with open(settings.worker_log_filepath(machine, worker_id)) as f:
-            click.echo_via_pager(f)
-    else:
-        login_host = settings.machine_config(machine)["login_host"]
-        util.run_command_ssh_interactive(login_host, "kochi show log worker {} -m {} --on-machine".format(worker_id, machine))
+    with open(settings.worker_log_filepath(machine, worker_id)) as f:
+        click.echo_via_pager(f)
 
-@log.command(name="job")
-@machine_option
-@on_machine_option
+@on_machine_cmd(log, "job")
 @click.argument("job_id", required=True, type=int)
-def show_log_job_cmd(machine, on_machine, job_id):
+def show_log_job_cmd(machine, job_id):
     """
     Show a log file of job JOB_ID on machine MACHINE.
     """
-    if machine == "local" or on_machine:
-        with open(settings.job_log_filepath(machine, job_id)) as f:
-            click.echo_via_pager(f)
-    else:
-        login_host = settings.machine_config(machine)["login_host"]
-        util.run_command_ssh_interactive(login_host, "kochi show log job {} -m {} --on-machine".format(job_id, machine))
+    with open(settings.job_log_filepath(machine, job_id)) as f:
+        click.echo_via_pager(f)
 
 # show path
 # -----------------------------------------------------------------------------
@@ -299,22 +289,16 @@ def show_log_job_cmd(machine, on_machine, job_id):
 def path():
     pass
 
-@path.command(name="project")
-@machine_option
-@on_machine_option
+@on_machine_cmd(path, "project")
 @click.option("-f", "--force", is_flag=True, default=False, help="Force to show the project path even if the project does not exist")
 @click.argument("project_name", required=True, type=str)
-def show_path_project_cmd(machine, on_machine, force, project_name):
+def show_path_project_cmd(machine, force, project_name):
     """
     Show a path to PROJECT_NAME on machine MACHINE.
     """
-    if machine == "local" or on_machine:
-        project_path = settings.project_git_dirpath(project_name)
-        if force or os.path.isdir(project_path):
-            print(project_path)
-        else:
-            print("Project '{}' does not exist.".format(project_name), file=sys.stderr)
-            sys.exit(1)
+    project_path = settings.project_git_dirpath(project_name)
+    if force or os.path.isdir(project_path):
+        print(project_path)
     else:
-        login_host = settings.machine_config(machine)["login_host"]
-        util.run_command_ssh_interactive(login_host, "kochi show path project -m {} --on-machine -f {} {}".format(machine, force, project_name))
+        print("Project '{}' does not exist.".format(project_name), file=sys.stderr)
+        sys.exit(1)
