@@ -18,7 +18,7 @@ def run_job(job, machine, stdout):
     print(click.style("Kochi job {} (ID={}) started.".format(job.name, job.id), fg=color), file=stdout, flush=True)
     print(click.style("-" * 80, fg=color), file=stdout, flush=True)
     with context.context(job.context):
-        with subprocess.Popen(["tee", settings.job_log_filepath(machine, job.id)], stdin=subprocess.PIPE, stdout=stdout, encoding="utf-8") as tee:
+        with subprocess.Popen(["tee", settings.job_log_filepath(machine, job.id)], stdin=subprocess.PIPE, stdout=stdout, encoding="utf-8", start_new_session=True) as tee:
             env = os.environ.copy()
             env["KOCHI_JOB_ID"] = str(job.id)
             env["KOCHI_JOB_NAME"] = job.name
@@ -26,8 +26,10 @@ def run_job(job, machine, stdout):
                 env["KOCHI_DEP_" + dep.upper()] = settings.project_dep_install_dirpath(job.context.project, machine, dep, recipe)
             try:
                 subprocess.run(job.commands, env=env, shell=not isinstance(job.commands, list), stdout=tee.stdin, stderr=tee.stdin, check=True)
-            except Exception as e:
-                print(str(e), file=tee.stdin, flush=True)
+            except KeyboardInterrupt:
+                print(click.style("Kochi job {} (ID={}) interrupted.".format(job.name, job.id), fg="red"), file=tee.stdin, flush=True)
+            except BaseException as e:
+                print(click.style("Kochi job {} (ID={}) failed: {}".format(job.name, job.id, str(e)), fg="red"), file=tee.stdin, flush=True)
     print(click.style("-" * 80, fg=color), file=stdout, flush=True)
 
 def worker_loop(queue_name, blocking, machine, stdout):
@@ -45,11 +47,16 @@ def start(queue_name, blocking, worker_id, machine):
     workspace = settings.worker_workspace_dirpath(machine, idx)
     with util.tmpdir(workspace):
         with sshd.sshd(machine, idx):
-            with subprocess.Popen(["tee", settings.worker_log_filepath(machine, idx)], stdin=subprocess.PIPE, encoding="utf-8") as tee:
+            with subprocess.Popen(["tee", settings.worker_log_filepath(machine, idx)], stdin=subprocess.PIPE, encoding="utf-8", start_new_session=True) as tee:
                 color = "green"
                 print(click.style("Kochi worker {} started on machine {}.".format(idx, machine), fg=color), file=tee.stdin, flush=True)
                 print(click.style("=" * 80, fg=color), file=tee.stdin, flush=True)
-                worker_loop(queue_name, blocking, machine, tee.stdin)
+                try:
+                    worker_loop(queue_name, blocking, machine, tee.stdin)
+                except KeyboardInterrupt:
+                    print(click.style("Kochi worker {} interrupted.".format(idx), fg="red"), file=tee.stdin, flush=True)
+                except BaseException as e:
+                    print(click.style("Kochi worker {} failed: {}".format(idx, str(e)), fg="red"), file=tee.stdin, flush=True)
                 print(click.style("=" * 80, fg=color), file=tee.stdin, flush=True)
 
 if __name__ == "__main__":
