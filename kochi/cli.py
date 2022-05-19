@@ -75,7 +75,7 @@ AllocArgs = namedtuple("AllocArgs", ["queue", "nodes", "duplicates", "time_limit
 @click.option("-q", "--queue", metavar="QUEUE", required=True, help="Queue to work on")
 @click.option("-n", "--nodes", metavar="NODES_SPEC", default="1", help="Specification of nodes to be allocated on machine MACHINE")
 @click.option("-d", "--duplicates", metavar="DUPLICATES", type=int, default=1, help="Number of workers to be created")
-@click.option("-t", "--time-limit", metavar="TIME_LIMIT", default="0", help="Time limit for the system job")
+@click.option("-t", "--time-limit", metavar="TIME_LIMIT", help="Time limit for the system job")
 def alloc_cmd(machine, queue, nodes, duplicates, time_limit):
     """
     Allocates nodes of NODES_SPEC on machine MACHINE as an interactive job

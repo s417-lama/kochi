@@ -10,10 +10,7 @@ import urllib
 import textwrap
 
 def decorate_command(commands, **opts):
-    cmds = []
-    if opts.get("env"):
-        for k, v in opts.get("env").items():
-            cmds.append("export {}=\"{}\"".format(k, v))
+    cmds = ["export {}=\"{}\"".format(k, v) for k, v in opts.get("env").items() if v] if opts.get("env") else []
     if opts.get("cwd"):
         cmds.append("cd " + opts.get("cwd"))
     cmds.append("\n".join(commands) if isinstance(commands, list) else commands)
