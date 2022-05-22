@@ -9,6 +9,7 @@ from . import job_queue
 from . import atomic_counter
 from . import context
 from . import sshd
+from . import heartbeat
 
 def get_worker_id(machine):
     return atomic_counter.fetch_and_add(settings.worker_counter_filepath(machine), 1)
@@ -46,18 +47,19 @@ def start(queue_name, blocking, worker_id, machine):
     idx = get_worker_id(machine) if worker_id == -1 else worker_id
     workspace = settings.worker_workspace_dirpath(machine, idx)
     with util.tmpdir(workspace):
-        with sshd.sshd(machine, idx):
-            with subprocess.Popen(["tee", settings.worker_log_filepath(machine, idx)], stdin=subprocess.PIPE, encoding="utf-8", start_new_session=True) as tee:
-                color = "green"
-                print(click.style("Kochi worker {} started on machine {}.".format(idx, machine), fg=color), file=tee.stdin, flush=True)
-                print(click.style("=" * 80, fg=color), file=tee.stdin, flush=True)
-                try:
-                    worker_loop(queue_name, blocking, machine, tee.stdin)
-                except KeyboardInterrupt:
-                    print(click.style("Kochi worker {} interrupted.".format(idx), fg="red"), file=tee.stdin, flush=True)
-                except BaseException as e:
-                    print(click.style("Kochi worker {} failed: {}".format(idx, str(e)), fg="red"), file=tee.stdin, flush=True)
-                print(click.style("=" * 80, fg=color), file=tee.stdin, flush=True)
+        with heartbeat.heartbeat(machine, idx):
+            with sshd.sshd(machine, idx):
+                with subprocess.Popen(["tee", settings.worker_log_filepath(machine, idx)], stdin=subprocess.PIPE, encoding="utf-8", start_new_session=True) as tee:
+                    color = "green"
+                    print(click.style("Kochi worker {} started on machine {}.".format(idx, machine), fg=color), file=tee.stdin, flush=True)
+                    print(click.style("=" * 80, fg=color), file=tee.stdin, flush=True)
+                    try:
+                        worker_loop(queue_name, blocking, machine, tee.stdin)
+                    except KeyboardInterrupt:
+                        print(click.style("Kochi worker {} interrupted.".format(idx), fg="red"), file=tee.stdin, flush=True)
+                    except BaseException as e:
+                        print(click.style("Kochi worker {} failed: {}".format(idx, str(e)), fg="red"), file=tee.stdin, flush=True)
+                    print(click.style("=" * 80, fg=color), file=tee.stdin, flush=True)
 
 if __name__ == "__main__":
     """

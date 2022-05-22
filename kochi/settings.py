@@ -42,6 +42,9 @@ def worker_log_filepath(machine, idx):
 def worker_workspace_dirpath(machine, idx):
     return os.path.join(worker_dirpath(machine), "workspace_{}".format(idx))
 
+def worker_heartbeat_filepath(machine, idx):
+    return os.path.join(worker_dirpath(machine), "heartbeat_{}.txt".format(idx))
+
 # Jobs
 # -----------------------------------------------------------------------------
 
