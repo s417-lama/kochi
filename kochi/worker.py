@@ -12,7 +12,9 @@ from . import sshd
 from . import heartbeat
 
 def get_worker_id(machine):
-    return atomic_counter.fetch_and_add(settings.worker_counter_filepath(machine), 1)
+    idx = atomic_counter.fetch_and_add(settings.worker_counter_filepath(machine), 1)
+    heartbeat.init(machine, idx)
+    return idx
 
 def run_job(job, machine, stdout):
     color = "blue"
@@ -60,6 +62,11 @@ def start(queue_name, blocking, worker_id, machine):
                     except BaseException as e:
                         print(click.style("Kochi worker {} failed: {}".format(idx, str(e)), fg="red"), file=tee.stdin, flush=True)
                     print(click.style("=" * 80, fg=color), file=tee.stdin, flush=True)
+
+State = heartbeat.State
+
+def get_state(machine, worker_id):
+    return heartbeat.get_state(machine, worker_id)
 
 if __name__ == "__main__":
     """
