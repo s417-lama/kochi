@@ -84,11 +84,11 @@ def project_dep_install_log_filepath(project_name, machine, dep_name, recipe_nam
 def project_dep_install_state_filepath(project_name, machine, dep_name, recipe_name):
     return os.path.join(project_dep_install_dirpath(project_name, machine, dep_name, recipe_name), ".kochi_state.txt")
 
-def project_dep_config(project_name):
-    return config()["dependencies"][project_name]
+def project_dep_configs():
+    return config()["dependencies"]
 
-def project_dep_recipe_config(project_name, recipe_name):
-    return project_dep_config(project_name)["recipes"][recipe_name]
+def project_dep_recipe_configs(project_name):
+    return project_dep_configs()[project_name]["recipes"]
 
 # sshd
 # -----------------------------------------------------------------------------

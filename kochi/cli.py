@@ -212,8 +212,8 @@ def install_cmd(click_ctx, machine, dependency, git_remote):
     project_name = project.project_name_of_cwd()
     login_host = settings.machine_config(machine)["login_host"] if machine != "local" else None
     for d, r in parse_dependencies(dependency):
-        dep_config = settings.project_dep_config(d)
-        recipe_config = settings.project_dep_recipe_config(d, r)
+        dep_config = settings.project_dep_configs()[d]
+        recipe_config = settings.project_dep_recipe_configs(d)[r]
         ctx = installer.get_install_context(dep_config, recipe_config, login_host, git_remote)
         args = installer.InstallConf(project_name, d, r, ctx, recipe_config.get("envs", dict()), recipe_config["commands"])
         if machine == "local":
@@ -259,9 +259,11 @@ def show_jobs_cmd(machine, all, queue, name):
 def show_job_cmd(machine, job_id):
     stats.show_job_detail(machine, job_id)
 
-@on_machine_cmd(show, "projects")
-def show_projects_cmd(machine):
-    stats.show_projects()
+@on_machine_cmd(show, "installs")
+@click.option("-p", "--project", help="Target (base) project. Defaults to the project of the current directory.",
+              callback=lambda _c, _p, v: project.project_name_of_cwd() if not v else v)
+def show_installs_cmd(machine, project):
+    stats.show_installs(machine, project)
 
 @on_machine_cmd(show, "install")
 @click.option("-p", "--project", help="Target (base) project. Defaults to the project of the current directory.",
@@ -269,7 +271,11 @@ def show_projects_cmd(machine):
 @dependency_option
 def show_install_cmd(machine, project, dependency):
     for d, r in parse_dependencies(dependency):
-        stats.show_install_detail(project, d, r, machine)
+        stats.show_install_detail(machine, project, d, r)
+
+@on_machine_cmd(show, "projects")
+def show_projects_cmd(machine):
+    stats.show_projects()
 
 # show log
 # -----------------------------------------------------------------------------
