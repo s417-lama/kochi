@@ -1,6 +1,7 @@
 from collections import namedtuple
 import os
 import subprocess
+import enum
 import time
 import click
 
@@ -11,7 +12,27 @@ from . import heartbeat
 from . import installer
 from . import project
 
-RunningState = heartbeat.RunningState
+class RunningState(enum.IntEnum):
+    def __str__(self):
+        if self.value == self.WAITING:
+            return "waiting"
+        elif self.value == self.RUNNING:
+            return "running"
+        elif self.value == self.TERMINATED:
+            return "terminated"
+        elif self.value == self.ABORTED:
+            return "aborted"
+        elif self.value == self.KILLED:
+            return "killed"
+        else:
+            return "invalid"
+    INVALID = 0
+    WAITING = 1
+    RUNNING = 2
+    TERMINATED = 3
+    ABORTED = 4
+    KILLED = 5
+
 state_fields = ["running_state", "name", "queue", "worker_id", "context", "dependency_states", "commands", "init_time", "start_time", "latest_time"]
 State = namedtuple("State", state_fields)
 
@@ -32,10 +53,10 @@ def on_start_job(job, worker_id, machine):
         f.write(util.serialize(next_state))
         f.truncate()
 
-def on_finish_job(job, worker_id, machine):
+def on_finish_job(job, worker_id, machine, running_state):
     with open(settings.job_state_filepath(machine, job.id), "r+") as f:
         state = util.deserialize(f.read())
-        next_state = update_state(state, running_state=RunningState.TERMINATED, latest_time=current_timestamp())
+        next_state = update_state(state, running_state=running_state, latest_time=current_timestamp())
         f.seek(0)
         f.write(util.serialize(next_state))
         f.truncate()
@@ -60,10 +81,12 @@ def run_job(job, worker_id, machine, queue_name, stdout):
                 subprocess.run(job.commands, env=env, shell=not isinstance(job.commands, list), stdout=tee.stdin, stderr=tee.stdin, check=True)
             except KeyboardInterrupt:
                 print(click.style("Kochi job {} (ID={}) interrupted.".format(job.name, job.id), fg="red"), file=tee.stdin, flush=True)
+                on_finish_job(job, worker_id, machine, RunningState.ABORTED)
             except BaseException as e:
                 print(click.style("Kochi job {} (ID={}) failed: {}".format(job.name, job.id, str(e)), fg="red"), file=tee.stdin, flush=True)
-            finally:
-                on_finish_job(job, worker_id, machine)
+                on_finish_job(job, worker_id, machine, RunningState.ABORTED)
+            else:
+                on_finish_job(job, worker_id, machine, RunningState.TERMINATED)
             print(click.style("-" * 80, fg=color), file=tee.stdin, flush=True)
 
 def get_state(machine, job_id):
@@ -72,8 +95,10 @@ def get_state(machine, job_id):
             state = util.deserialize(f.read())
         if state.running_state == RunningState.RUNNING:
             worker_state = heartbeat.get_state(settings.worker_heartbeat_filepath(machine, state.worker_id))
-            latest_time = current_timestamp() if worker_state.running_state == heartbeat.RunningState.RUNNING else worker_state.latest_time
-            return update_state(state, running_state=worker_state.running_state, latest_time=latest_time)
+            if worker_state.running_state == heartbeat.RunningState.RUNNING:
+                return update_state(state, latest_time=current_timestamp())
+            else:
+                return update_state(state, running_state=RunningState.KILLED, latest_time=worker_state.latest_time)
         else:
             return state
     except:
