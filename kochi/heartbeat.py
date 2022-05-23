@@ -39,8 +39,8 @@ def update_timestamp(filename, **opts):
         f.truncate()
 
 def daemon(queue, filename, interval):
-    try:
-        while True:
+    while True:
+        try:
             update_timestamp(filename)
             if queue.empty():
                 time.sleep(interval)
@@ -50,9 +50,9 @@ def daemon(queue, filename, interval):
             else:
                 print("Something is wrong in heartbeat.", file=sys.stderr)
                 exit(1)
-    except KeyboardInterrupt:
-        update_timestamp(filename, state=RunningState.TERMINATED)
-        return
+        except KeyboardInterrupt:
+            time.sleep(0.1) # wait for a possible termination message
+            pass
 
 @contextlib.contextmanager
 def heartbeat(filepath, **opts):
