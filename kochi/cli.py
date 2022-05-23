@@ -97,7 +97,7 @@ def alloc_aux_cmd(machine, args_serialized):
     """
     args = util.deserialize(args_serialized)
     for i in range(args.duplicates):
-        worker_id = worker.get_worker_id(machine)
+        worker_id = worker.init(machine, args.queue)
         env_dict = dict(
             KOCHI_ALLOC_NODE_SPEC=args.nodes,
             KOCHI_ALLOC_TIME_LIMIT=args.time_limit,
@@ -143,7 +143,8 @@ def enqueue_cmd(machine, queue, with_context, dependency, name, git_remote, comm
     deps = parse_dependencies(dependency)
     job = job_queue.Job(name=name, machine=machine, queue=queue, dependencies=deps, context=ctx, commands=list(commands))
     if machine == "local":
-        job_queue.push(job)
+        job_enqueued = job_queue.push(job)
+        click.secho("Job {} submitted on machine {}.".format(job_enqueued.id, machine), fg="blue")
     else:
         util.run_command_ssh_interactive(login_host, "kochi enqueue_aux -m {} {}".format(machine, util.serialize(job)))
 
@@ -190,6 +191,7 @@ def work_cmd(machine, queue, blocking, worker_id):
     Start a new worker that works on queue QUEUE.
     Assume that this command is invoked on machine MACHINE.
     """
+    worker_id = worker.init(machine, queue, worker_id)
     worker.start(queue, blocking, worker_id, machine)
 
 # install
@@ -249,13 +251,16 @@ def show_queues_cmd(machine):
 
 @on_machine_cmd(show, "workers")
 @click.option("-a", "--all", is_flag=True, default=False, help="Show all workers including terminated ones.")
-def show_workers_cmd(machine, all):
-    stats.show_workers(machine, all)
+@click.option("-q", "--queue", multiple=True, help="Queues on which workers work on. Defaults to all queues.")
+def show_workers_cmd(machine, all, queue):
+    stats.show_workers(machine, all, queue)
 
 @on_machine_cmd(show, "jobs")
 @click.option("-a", "--all", is_flag=True, default=False, help="Show all jobs including terminated ones.")
-def show_jobs_cmd(machine, all):
-    stats.show_jobs(machine, all)
+@click.option("-q", "--queue", multiple=True, help="Queues for which jobs were submitted. Defaults to all queues.")
+@click.option("-n", "--name", multiple=True, help="Job names to be queried. Defaults to all names.")
+def show_jobs_cmd(machine, all, queue, name):
+    stats.show_jobs(machine, all, queue, name)
 
 @on_machine_cmd(show, "projects")
 def show_projects_cmd(machine):

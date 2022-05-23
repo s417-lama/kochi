@@ -12,7 +12,7 @@ JobEnqueued = namedtuple("JobEnqueued", ["id", "name", "dependencies", "context"
 def push(job):
     idx = atomic_counter.fetch_and_add(settings.job_counter_filepath(job.machine), 1)
     job_enqueued = JobEnqueued(idx, job.name, job.dependencies, job.context, job.commands)
-    job_manager.init(job.machine, idx)
+    job_manager.init(job_enqueued, job.machine, job.queue)
     locked_queue.push(settings.queue_filepath(job.machine, job.queue), util.serialize(job_enqueued))
     return job_enqueued
 

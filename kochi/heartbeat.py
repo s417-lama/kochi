@@ -5,6 +5,8 @@ import multiprocessing
 import contextlib
 import enum
 
+from . import util
+
 class RunningState(enum.IntEnum):
     def __str__(self):
         if self.value == self.WAITING:
@@ -20,7 +22,14 @@ class RunningState(enum.IntEnum):
     RUNNING = 2
     TERMINATED = 3
 
-State = namedtuple("State", ["running_state", "init_time", "start_time", "latest_time"])
+state_fields = ["running_state", "init_time", "start_time", "latest_time"]
+State = namedtuple("State", state_fields)
+
+def update_state(state, **kwargs):
+    d = dict()
+    for i, f in enumerate(state_fields):
+        d[f] = kwargs.get(f, state[i])
+    return State(**d)
 
 def current_timestamp():
     return int(time.time())
@@ -28,14 +37,11 @@ def current_timestamp():
 def update_timestamp(filename, **opts):
     timestamp = current_timestamp()
     with open(filename, "r+") as f:
-        states = f.read().split()
-        init_time = int(states[1])
-        if states[0] == str(RunningState.WAITING):
-            start_time = timestamp
-        else:
-            start_time = int(states[2])
+        state = util.deserialize(f.read())
+        start_time = timestamp if state.running_state == RunningState.WAITING else state.start_time
+        next_state = update_state(state, running_state=opts.get("state", RunningState.RUNNING), start_time=start_time, latest_time=current_timestamp())
         f.seek(0)
-        f.write("{} {} {} {}".format(str(opts.get("state", RunningState.RUNNING)), str(init_time), str(start_time), str(timestamp)))
+        f.write(util.serialize(next_state))
         f.truncate()
 
 def daemon(queue, filename, interval):
@@ -68,18 +74,16 @@ def heartbeat(filepath, **opts):
 def get_state(filepath, **opts):
     try:
         with open(filepath, "r") as f:
-            states = f.read().split()
-        if states[0] == str(RunningState.WAITING):
-            return State(RunningState.WAITING, int(states[1]), None, None)
-        elif states[0] == str(RunningState.RUNNING):
-            timestamp = int(states[3])
-            running_state = RunningState.TERMINATED if timestamp + opts.get("margin", 5) < current_timestamp() else RunningState.RUNNING
-            return State(running_state, int(states[1]), int(states[2]), timestamp)
-        elif states[0] == str(RunningState.TERMINATED):
-            return State(RunningState.TERMINATED, int(states[1]), int(states[2]), int(states[3]))
+            state = util.deserialize(f.read())
+        if state.running_state == RunningState.RUNNING:
+            running_state = RunningState.TERMINATED if state.latest_time + opts.get("margin", 5) < current_timestamp() else RunningState.RUNNING
+            return update_state(state, running_state=running_state)
+        else:
+            return state
     except:
         return State(RunningState.INVALID, None, None, None)
 
 def init(filepath):
     with open(filepath, "w") as f:
-        f.write("{} {}".format(str(RunningState.WAITING), current_timestamp()))
+        state = State(RunningState.WAITING, current_timestamp(), None, None)
+        f.write(util.serialize(state))

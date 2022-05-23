@@ -4,30 +4,38 @@ import subprocess
 import time
 import click
 
+from . import util
 from . import settings
 from . import context
 from . import heartbeat
 
 RunningState = heartbeat.RunningState
-State = namedtuple("State", ["running_state", "worker_id", "init_time", "start_time", "latest_time"])
+state_fields = ["running_state", "name", "queue", "worker_id", "init_time", "start_time", "latest_time"]
+State = namedtuple("State", state_fields)
+
+def update_state(state, **kwargs):
+    d = dict()
+    for i, f in enumerate(state_fields):
+        d[f] = kwargs.get(f, state[i])
+    return State(**d)
 
 def current_timestamp():
     return int(time.time())
 
 def on_start_job(job, worker_id, machine):
     with open(settings.job_state_filepath(machine, job.id), "r+") as f:
-        init_time = int(f.read().split()[1])
+        state = util.deserialize(f.read())
+        next_state = update_state(state, running_state=RunningState.RUNNING, worker_id=worker_id, start_time=current_timestamp())
         f.seek(0)
-        f.write("{} {} {} {}".format(str(RunningState.RUNNING), worker_id, str(init_time), str(current_timestamp())))
+        f.write(util.serialize(next_state))
         f.truncate()
 
 def on_finish_job(job, worker_id, machine):
     with open(settings.job_state_filepath(machine, job.id), "r+") as f:
-        states = f.read().split()
-        init_time = int(states[2])
-        start_time = int(states[3])
+        state = util.deserialize(f.read())
+        next_state = update_state(state, running_state=RunningState.TERMINATED, latest_time=current_timestamp())
         f.seek(0)
-        f.write("{} {} {} {} {}".format(str(RunningState.TERMINATED), worker_id, str(init_time), str(start_time), str(current_timestamp())))
+        f.write(util.serialize(next_state))
         f.truncate()
 
 def run_job(job, worker_id, machine, stdout):
@@ -55,19 +63,17 @@ def run_job(job, worker_id, machine, stdout):
 def get_state(machine, job_id):
     try:
         with open(settings.job_state_filepath(machine, job_id), "r") as f:
-            states = f.read().split()
-        if states[0] == str(RunningState.WAITING):
-            return State(RunningState.WAITING, None, int(states[1]), None, None)
-        elif states[0] == str(RunningState.RUNNING):
-            worker_id = int(states[1])
-            worker_state = heartbeat.get_state(settings.worker_heartbeat_filepath(machine, worker_id))
+            state = util.deserialize(f.read())
+        if state.running_state == RunningState.RUNNING:
+            worker_state = heartbeat.get_state(settings.worker_heartbeat_filepath(machine, state.worker_id))
             latest_time = current_timestamp() if worker_state.running_state == heartbeat.RunningState.RUNNING else worker_state.latest_time
-            return State(worker_state.running_state, worker_id, int(states[2]), int(states[3]), latest_time)
-        elif states[0] == str(RunningState.TERMINATED):
-            return State(RunningState.TERMINATED, int(states[1]), int(states[2]), int(states[3]), int(states[4]))
+            return update_state(state, running_state=worker_state.running_state, latest_time=latest_time)
+        else:
+            return state
     except:
-        return State(RunningState.INVALID, None, None, None, None)
+        return State(RunningState.INVALID, None, None, None, None, None, None)
 
-def init(machine, job_id):
-    with open(settings.job_state_filepath(machine, job_id), "w") as f:
-        f.write("{} {}".format(str(RunningState.WAITING), current_timestamp()))
+def init(job, machine, queue_name):
+    with open(settings.job_state_filepath(machine, job.id), "w") as f:
+        state = State(RunningState.WAITING, job.name, queue_name, None, current_timestamp(), None, None)
+        f.write(util.serialize(state))

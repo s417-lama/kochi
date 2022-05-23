@@ -12,31 +12,34 @@ def show_queues(machine):
     for q in queues:
         print(q)
 
-def show_workers(machine, all):
+def show_workers(machine, show_all, queues):
     max_workers = atomic_counter.fetch(settings.worker_counter_filepath(machine))
     table = []
     for idx in range(max_workers):
         state = worker.get_state(machine, idx)
-        if all or state.running_state == worker.RunningState.RUNNING:
+        if (show_all or state.running_state == worker.RunningState.WAITING or state.running_state == worker.RunningState.RUNNING) and \
+           (len(queues) == 0 or state.queue in queues):
             init_dt   = datetime.datetime.fromtimestamp(state.init_time)   if state.init_time   else None
             start_dt  = datetime.datetime.fromtimestamp(state.start_time)  if state.start_time  else None
             latest_dt = datetime.datetime.fromtimestamp(state.latest_time) if state.latest_time else None
-            table.append([idx, str(state.running_state), init_dt, start_dt,
+            table.append([idx, str(state.running_state), state.queue, init_dt, start_dt,
                           latest_dt - start_dt if start_dt and latest_dt else None])
-    print(tabulate.tabulate(table, headers=["ID", "State", "Created Time", "Start Time", "Running Time"]))
+    print(tabulate.tabulate(table, headers=["ID", "State", "Queue", "Created Time", "Start Time", "Running Time"]))
 
-def show_jobs(machine, all):
+def show_jobs(machine, show_all, queues, names):
     max_jobs = atomic_counter.fetch(settings.job_counter_filepath(machine))
     table = []
     for idx in range(max_jobs):
         state = job_manager.get_state(machine, idx)
-        if all or state.running_state == job_manager.RunningState.RUNNING:
+        if (show_all or state.running_state == job_manager.RunningState.WAITING or state.running_state == job_manager.RunningState.RUNNING) and \
+           (len(queues) == 0 or state.queue in queues) and \
+           (len(names) == 0 or state.name in names):
             init_dt   = datetime.datetime.fromtimestamp(state.init_time)   if state.init_time   else None
             start_dt  = datetime.datetime.fromtimestamp(state.start_time)  if state.start_time  else None
             latest_dt = datetime.datetime.fromtimestamp(state.latest_time) if state.latest_time else None
-            table.append([idx, str(state.running_state), state.worker_id, init_dt, start_dt,
+            table.append([idx, state.name, str(state.running_state), state.queue, state.worker_id, init_dt, start_dt,
                           latest_dt - start_dt if start_dt and latest_dt else None])
-    print(tabulate.tabulate(table, headers=["ID", "State", "Worker ID", "Created Time", "Start Time", "Running Time"]))
+    print(tabulate.tabulate(table, headers=["ID", "Name", "State", "Queue", "Worker ID", "Created Time", "Start Time", "Running Time"]))
 
 def show_projects():
     projects = sorted(os.listdir(settings.project_dirpath()))

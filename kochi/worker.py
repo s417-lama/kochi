@@ -1,3 +1,4 @@
+from collections import namedtuple
 import os
 import subprocess
 import time
@@ -12,9 +13,12 @@ from . import context
 from . import sshd
 from . import heartbeat
 
+RunningState = heartbeat.RunningState
+state_fields = ["running_state", "queue", "init_time", "start_time", "latest_time"]
+State = namedtuple("State", state_fields)
+
 def get_worker_id(machine):
     idx = atomic_counter.fetch_and_add(settings.worker_counter_filepath(machine), 1)
-    heartbeat.init(settings.worker_heartbeat_filepath(machine, idx))
     return idx
 
 def worker_loop(idx, queue_name, blocking, machine, stdout):
@@ -28,9 +32,7 @@ def worker_loop(idx, queue_name, blocking, machine, stdout):
             return
 
 def start(queue_name, blocking, worker_id, machine):
-    worker_id = get_worker_id(machine) if worker_id == -1 else worker_id
-    workspace = settings.worker_workspace_dirpath(machine, worker_id)
-    with util.tmpdir(workspace):
+    with util.tmpdir(settings.worker_workspace_dirpath(machine, worker_id)):
         with heartbeat.heartbeat(settings.worker_heartbeat_filepath(machine, worker_id)):
             with sshd.sshd(machine, worker_id):
                 with subprocess.Popen(["tee", settings.worker_log_filepath(machine, worker_id)], stdin=subprocess.PIPE, encoding="utf-8", start_new_session=True) as tee:
@@ -45,11 +47,21 @@ def start(queue_name, blocking, worker_id, machine):
                         print(click.style("Kochi worker {} failed: {}".format(worker_id, str(e)), fg="red"), file=tee.stdin, flush=True)
                     print(click.style("=" * 80, fg=color), file=tee.stdin, flush=True)
 
-RunningState = heartbeat.RunningState
-State = heartbeat.State
-
 def get_state(machine, worker_id):
-    return heartbeat.get_state(settings.worker_heartbeat_filepath(machine, worker_id))
+    try:
+        with open(settings.worker_state_filepath(machine, worker_id), "r") as f:
+            queue = f.read().strip()
+        hb_state = heartbeat.get_state(settings.worker_heartbeat_filepath(machine, worker_id))
+        return State(hb_state.running_state, queue, hb_state.init_time, hb_state.start_time, hb_state.latest_time)
+    except:
+        return State(RunningState.INVALID, None, None, None, None)
+
+def init(machine, queue, worker_id):
+    worker_id = get_worker_id(machine) if worker_id == -1 else worker_id
+    with open(settings.worker_state_filepath(machine, worker_id), "w") as f:
+        f.write(queue)
+    heartbeat.init(settings.worker_heartbeat_filepath(machine, worker_id))
+    return worker_id
 
 if __name__ == "__main__":
     """
@@ -68,4 +80,5 @@ if __name__ == "__main__":
             ctx = context.create(repo_path)
             job_queue.push(job_queue.Job("test_job_{}".format(i), "local", queue_name, [], ctx, "sleep 0.1; cat {}".format(test_filename)))
     os.remove(test_filename)
+    init("local", queue_name)
     start(queue_name, False, -1, "local")
