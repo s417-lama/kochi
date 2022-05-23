@@ -63,6 +63,7 @@ def start(queue_name, blocking, worker_id, machine):
                         print(click.style("Kochi worker {} failed: {}".format(idx, str(e)), fg="red"), file=tee.stdin, flush=True)
                     print(click.style("=" * 80, fg=color), file=tee.stdin, flush=True)
 
+RunningState = heartbeat.RunningState
 State = heartbeat.State
 
 def get_state(machine, worker_id):
