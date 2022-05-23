@@ -1,6 +1,5 @@
 from collections import namedtuple
 import os
-import subprocess
 import time
 import click
 
@@ -35,7 +34,7 @@ def start(queue_name, blocking, worker_id, machine):
     with util.tmpdir(settings.worker_workspace_dirpath(machine, worker_id)):
         with heartbeat.heartbeat(settings.worker_heartbeat_filepath(machine, worker_id)):
             with sshd.sshd(machine, worker_id):
-                with subprocess.Popen(["tee", settings.worker_log_filepath(machine, worker_id)], stdin=subprocess.PIPE, encoding="utf-8", start_new_session=True) as tee:
+                with util.tee(settings.worker_log_filepath(machine, worker_id)) as tee:
                     color = "green"
                     print(click.style("Kochi worker {} started on machine {}.".format(worker_id, machine), fg=color), file=tee.stdin, flush=True)
                     print(click.style("=" * 80, fg=color), file=tee.stdin, flush=True)

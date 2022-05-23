@@ -81,3 +81,9 @@ def ssh_keygen(keypath):
 def dedent(string, **opts):
     indent = opts.get("indent", 0)
     return textwrap.indent(textwrap.dedent(string.strip("\n")), " " * indent)
+
+@contextlib.contextmanager
+def tee(filepath, **opts):
+    stdout = opts.get("stdout", sys.stdout)
+    with subprocess.Popen(["tee", filepath], stdin=subprocess.PIPE, encoding="utf-8", start_new_session=True, stdout=stdout) as p:
+        yield p

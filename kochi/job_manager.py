@@ -43,7 +43,7 @@ def run_job(job, worker_id, machine, queue_name, stdout):
     print(click.style("Kochi job {} (ID={}) started.".format(job.name, job.id), fg=color), file=stdout, flush=True)
     print(click.style("-" * 80, fg=color), file=stdout, flush=True)
     with context.context(job.context):
-        with subprocess.Popen(["tee", settings.job_log_filepath(machine, job.id)], stdin=subprocess.PIPE, stdout=stdout, encoding="utf-8", start_new_session=True) as tee:
+        with util.tee(settings.job_log_filepath(machine, job.id), stdout=stdout) as tee:
             on_start_job(job, worker_id, machine)
             env = os.environ.copy()
             env["KOCHI_MACHINE"] = machine
