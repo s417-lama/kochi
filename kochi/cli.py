@@ -253,8 +253,9 @@ def show_workers_cmd(machine, all):
     stats.show_workers(machine, all)
 
 @on_machine_cmd(show, "jobs")
-def show_jobs_cmd(machine):
-    stats.show_jobs(machine)
+@click.option("-a", "--all", is_flag=True, default=False, help="Show all jobs including terminated ones.")
+def show_jobs_cmd(machine, all):
+    stats.show_jobs(machine, all)
 
 @on_machine_cmd(show, "projects")
 def show_projects_cmd(machine):

@@ -2,6 +2,7 @@ from collections import namedtuple
 
 from . import util
 from . import settings
+from . import job_manager
 from . import locked_queue
 from . import atomic_counter
 
@@ -11,14 +12,14 @@ JobEnqueued = namedtuple("JobEnqueued", ["id", "name", "dependencies", "context"
 def push(job):
     idx = atomic_counter.fetch_and_add(settings.job_counter_filepath(job.machine), 1)
     job_enqueued = JobEnqueued(idx, job.name, job.dependencies, job.context, job.commands)
-    job_str = util.serialize(job_enqueued)
-    locked_queue.push(settings.queue_filepath(job.machine, job.queue), job_str)
+    job_manager.init(job.machine, idx)
+    locked_queue.push(settings.queue_filepath(job.machine, job.queue), util.serialize(job_enqueued))
     return job_enqueued
 
 def pop(machine, queue):
-    job_str = locked_queue.pop(settings.queue_filepath(machine, queue))
-    if job_str:
-        return util.deserialize(job_str)
+    job_serialized = locked_queue.pop(settings.queue_filepath(machine, queue))
+    if job_serialized:
+        return util.deserialize(job_serialized)
     else:
         return None
 

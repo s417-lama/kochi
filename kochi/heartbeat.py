@@ -5,8 +5,6 @@ import multiprocessing
 import contextlib
 import enum
 
-from . import settings
-
 class RunningState(enum.IntEnum):
     def __str__(self):
         if self.value == self.WAITING:
@@ -57,10 +55,9 @@ def daemon(queue, filename, interval):
         return
 
 @contextlib.contextmanager
-def heartbeat(machine, worker_id, **opts):
-    filename = settings.worker_heartbeat_filepath(machine, worker_id)
+def heartbeat(filepath, **opts):
     q = multiprocessing.Queue()
-    p = multiprocessing.Process(target=daemon, args=(q, filename, opts.get("interval", 3)))
+    p = multiprocessing.Process(target=daemon, args=(q, filepath, opts.get("interval", 3)))
     p.start()
     try:
         yield
@@ -68,25 +65,21 @@ def heartbeat(machine, worker_id, **opts):
         q.put("terminate")
         p.join()
 
-def get_state(machine, worker_id, **opts):
-    filename = settings.worker_heartbeat_filepath(machine, worker_id)
+def get_state(filepath, **opts):
     try:
-        with open(filename, "r") as f:
+        with open(filepath, "r") as f:
             states = f.read().split()
         if states[0] == str(RunningState.WAITING):
             return State(RunningState.WAITING, int(states[1]), None, None)
         elif states[0] == str(RunningState.RUNNING):
             timestamp = int(states[3])
-            if timestamp + opts.get("margin", 5) < current_timestamp():
-                return State(RunningState.TERMINATED, int(states[1]), int(states[2]), timestamp)
-            else:
-                return State(RunningState.RUNNING, int(states[1]), int(states[2]), timestamp)
+            running_state = RunningState.TERMINATED if timestamp + opts.get("margin", 5) < current_timestamp() else RunningState.RUNNING
+            return State(running_state, int(states[1]), int(states[2]), timestamp)
         elif states[0] == str(RunningState.TERMINATED):
-                return State(RunningState.TERMINATED, int(states[1]), int(states[2]), int(states[3]))
+            return State(RunningState.TERMINATED, int(states[1]), int(states[2]), int(states[3]))
     except:
         return State(RunningState.INVALID, None, None, None)
 
-def init(machine, worker_id):
-    filename = settings.worker_heartbeat_filepath(machine, worker_id)
-    with open(filename, "w") as f:
+def init(filepath):
+    with open(filepath, "w") as f:
         f.write("{} {}".format(str(RunningState.WAITING), current_timestamp()))

@@ -5,6 +5,7 @@ import tabulate
 from . import settings
 from . import atomic_counter
 from . import worker
+from . import job_manager
 
 def show_queues(machine):
     queues = sorted(os.listdir(settings.queue_dirpath(machine)))
@@ -24,10 +25,18 @@ def show_workers(machine, all):
                           latest_dt - start_dt if start_dt and latest_dt else None])
     print(tabulate.tabulate(table, headers=["ID", "State", "Created Time", "Start Time", "Running Time"]))
 
-def show_jobs(machine):
+def show_jobs(machine, all):
     max_jobs = atomic_counter.fetch(settings.job_counter_filepath(machine))
+    table = []
     for idx in range(max_jobs):
-        print("Job {}".format(idx))
+        state = job_manager.get_state(machine, idx)
+        if all or state.running_state == job_manager.RunningState.RUNNING:
+            init_dt   = datetime.datetime.fromtimestamp(state.init_time)   if state.init_time   else None
+            start_dt  = datetime.datetime.fromtimestamp(state.start_time)  if state.start_time  else None
+            latest_dt = datetime.datetime.fromtimestamp(state.latest_time) if state.latest_time else None
+            table.append([idx, str(state.running_state), state.worker_id, init_dt, start_dt,
+                          latest_dt - start_dt if start_dt and latest_dt else None])
+    print(tabulate.tabulate(table, headers=["ID", "State", "Worker ID", "Created Time", "Start Time", "Running Time"]))
 
 def show_projects():
     projects = sorted(os.listdir(settings.project_dirpath()))
