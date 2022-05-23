@@ -49,7 +49,7 @@ def run_job(job, worker_id, machine, stdout):
             env["KOCHI_JOB_ID"] = str(job.id)
             env["KOCHI_JOB_NAME"] = job.name
             for dep, recipe in job.dependencies:
-                env["KOCHI_DEP_" + dep.upper()] = settings.project_dep_install_dirpath(job.context.project, machine, dep, recipe)
+                env["KOCHI_INSTALL_PREFIX_" + dep.upper()] = settings.project_dep_install_dirpath(job.context.project, machine, dep, recipe)
             try:
                 subprocess.run(job.commands, env=env, shell=not isinstance(job.commands, list), stdout=tee.stdin, stderr=tee.stdin, check=True)
             except KeyboardInterrupt:

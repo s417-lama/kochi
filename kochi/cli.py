@@ -197,7 +197,21 @@ def work_cmd(machine, queue, blocking, worker_id):
 # install
 # -----------------------------------------------------------------------------
 
-InstallArgs = namedtuple("InstallArgs", ["project_name", "dependency", "recipe_name", "context", "commands"])
+InstallArgs = namedtuple("InstallArgs", ["project_name", "dependency", "recipe_name", "context", "envs", "commands"])
+
+def get_install_context(dep_config, recipe_config, login_host, git_remote):
+    if dep_config.get("local_path") and dep_config.get("git_remote"):
+        raise click.UsageError("'local_path' and 'git_remote' cannot be simultaneously specified in dependency config.")
+    if dep_config.get("local_path"):
+        local_dep_path = os.path.join(util.toplevel_git_dirpath(), dep_config["local_path"])
+        with util.cwd(local_dep_path):
+            if not git_remote:
+                project.sync(login_host)
+            return context.create_with_project_config(recipe_config, git_remote)
+    elif dep_config.get("git_remote"):
+        if recipe_config.get("current_status"):
+            raise click.UsageError("'current_status' cannot be used in 'git_remote' dependency.")
+        return context.create_with_project_config(recipe_config, dep_config["git_remote"])
 
 @cli.command(name="install")
 @machine_option
@@ -211,13 +225,10 @@ def install_cmd(click_ctx, machine, dependency, recipe_name, git_remote):
     """
     project_name = project.project_name_of_cwd()
     login_host = settings.machine_config(machine)["login_host"] if machine != "local" else None
-    local_dep_path = os.path.join(util.toplevel_git_dirpath(), settings.project_dep_config(dependency)["local_path"])
-    dep_config = settings.project_dep_recipe_config(dependency, recipe_name)
-    with util.cwd(local_dep_path):
-        if not git_remote:
-            project.sync(login_host)
-        ctx = context.create_with_project_config(dep_config, git_remote)
-    args = InstallArgs(project_name, dependency, recipe_name, ctx, dep_config["commands"])
+    dep_config = settings.project_dep_config(dependency)
+    recipe_config = settings.project_dep_recipe_config(dependency, recipe_name)
+    ctx = get_install_context(dep_config, recipe_config, login_host, git_remote)
+    args = InstallArgs(project_name, dependency, recipe_name, ctx, recipe_config["envs"], recipe_config["commands"])
     if machine == "local":
         click_ctx.invoke(install_aux_cmd, args_serialized=util.serialize(args))
     else:
@@ -235,8 +246,11 @@ def install_aux_cmd(machine, args_serialized):
     os.makedirs(prefix, exist_ok=True)
     with util.tmpdir(settings.project_dep_install_tmp_dirpath(args.project_name, machine, args.dependency, args.recipe_name)):
         with context.context(args.context):
-            env_dict = dict(KOCHI_INSTALL_PREFIX=prefix)
-            subprocess.run(util.decorate_command(args.commands, env=env_dict), shell=True, check=True)
+            env = os.environ.copy()
+            env["KOCHI_INSTALL_PREFIX"] = prefix
+            for k, v in args.envs.items():
+                env[k] = v
+            subprocess.run(util.decorate_command(args.commands), env=env, shell=True, check=True)
 
 # show
 # -----------------------------------------------------------------------------
