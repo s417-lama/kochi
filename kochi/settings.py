@@ -81,6 +81,9 @@ def project_dep_install_tmp_dirpath(project_name, machine, dep_name, recipe_name
 def project_dep_install_log_filepath(project_name, machine, dep_name, recipe_name):
     return os.path.join(project_dep_install_dirpath(project_name, machine, dep_name, recipe_name), ".kochi_log.txt")
 
+def project_dep_install_state_filepath(project_name, machine, dep_name, recipe_name):
+    return os.path.join(project_dep_install_dirpath(project_name, machine, dep_name, recipe_name), ".kochi_state.txt")
+
 def project_dep_config(project_name):
     return config()["dependencies"][project_name]
 

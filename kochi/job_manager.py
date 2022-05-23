@@ -8,9 +8,11 @@ from . import util
 from . import settings
 from . import context
 from . import heartbeat
+from . import installer
+from . import project
 
 RunningState = heartbeat.RunningState
-state_fields = ["running_state", "name", "queue", "worker_id", "context", "dependencies", "commands", "init_time", "start_time", "latest_time"]
+state_fields = ["running_state", "name", "queue", "worker_id", "context", "dependency_states", "commands", "init_time", "start_time", "latest_time"]
 State = namedtuple("State", state_fields)
 
 def update_state(state, **kwargs):
@@ -78,6 +80,8 @@ def get_state(machine, job_id):
         return State(RunningState.INVALID, None, None, None, None, None, None, None, None, None)
 
 def init(job, machine, queue_name):
+    project_name = project.project_name_of_cwd()
     with open(settings.job_state_filepath(machine, job.id), "w") as f:
-        state = State(RunningState.WAITING, job.name, queue_name, None, job.context, job.dependencies, job.commands, current_timestamp(), None, None)
+        dependency_states = [installer.get_state(project_name, d, r, machine) for d, r in job.dependencies]
+        state = State(RunningState.WAITING, job.name, queue_name, None, job.context, dependency_states, job.commands, current_timestamp(), None, None)
         f.write(util.serialize(state))

@@ -13,6 +13,7 @@ from . import job_queue
 from . import context
 from . import project
 from . import sshd
+from . import installer
 
 machine_option = click.option("-m", "--machine", metavar="MACHINE", default="local", help="Machine name",
                               callback=lambda _c, _p, v: (settings.ensure_init_machine(v), v)[-1])
@@ -199,24 +200,6 @@ def work_cmd(machine, queue, blocking, worker_id):
 # install
 # -----------------------------------------------------------------------------
 
-InstallArgs = namedtuple("InstallArgs", ["project_name", "dependency", "recipe", "context", "envs", "commands"])
-
-def get_install_context(dep_config, recipe_config, login_host, git_remote):
-    if dep_config.get("local_path") and dep_config.get("git_remote"):
-        raise click.UsageError("'local_path' and 'git_remote' cannot be simultaneously specified in dependency config.")
-    if dep_config.get("local_path"):
-        local_dep_path = os.path.join(util.toplevel_git_dirpath(), dep_config["local_path"])
-        with util.cwd(local_dep_path):
-            if not git_remote:
-                project.sync(login_host)
-            return context.create_with_project_config(recipe_config, git_remote)
-    elif dep_config.get("git_remote"):
-        if recipe_config.get("current_status"):
-            raise click.UsageError("'current_status' cannot be used in 'git_remote' dependency.")
-        return context.create_with_project_config(recipe_config, dep_config["git_remote"])
-    else:
-        return None
-
 @cli.command(name="install")
 @machine_option
 @dependency_option
@@ -231,8 +214,8 @@ def install_cmd(click_ctx, machine, dependency, git_remote):
     for d, r in parse_dependencies(dependency):
         dep_config = settings.project_dep_config(d)
         recipe_config = settings.project_dep_recipe_config(d, r)
-        ctx = get_install_context(dep_config, recipe_config, login_host, git_remote)
-        args = InstallArgs(project_name, d, r, ctx, recipe_config.get("envs", dict()), recipe_config["commands"])
+        ctx = installer.get_install_context(dep_config, recipe_config, login_host, git_remote)
+        args = installer.InstallConf(project_name, d, r, ctx, recipe_config.get("envs", dict()), recipe_config["commands"])
         if machine == "local":
             click_ctx.invoke(install_aux_cmd, args_serialized=util.serialize(args))
         else:
@@ -245,27 +228,7 @@ def install_aux_cmd(machine, args_serialized):
     """
     For internal use only.
     """
-    args = util.deserialize(args_serialized)
-    prefix = settings.project_dep_install_dirpath(args.project_name, machine, args.dependency, args.recipe)
-    os.makedirs(prefix, exist_ok=True)
-    with util.tmpdir(settings.project_dep_install_tmp_dirpath(args.project_name, machine, args.dependency, args.recipe)):
-        with context.context(args.context):
-            with util.tee(settings.project_dep_install_log_filepath(args.project_name, machine, args.dependency, args.recipe)) as tee:
-                color = "magenta"
-                print(click.style("Kochi installation for {}:{} started on machine {}.".format(args.dependency, args.recipe, machine), fg=color), file=tee.stdin, flush=True)
-                print(click.style("*" * 80, fg=color), file=tee.stdin, flush=True)
-                env = os.environ.copy()
-                env["KOCHI_MACHINE"] = machine
-                env["KOCHI_INSTALL_PREFIX"] = prefix
-                for k, v in args.envs.items():
-                    env[k] = v
-                try:
-                    subprocess.run(util.decorate_command(args.commands), env=env, shell=True, check=True, stdout=tee.stdin, stderr=tee.stdin)
-                except KeyboardInterrupt:
-                    print(click.style("Kochi installation for {}:{} interrupted.".format(args.dependency, args.recipe), fg="red"), file=tee.stdin, flush=True)
-                except BaseException as e:
-                    print(click.style("Kochi installation for {}:{} failed: {}".format(args.dependency, args.recipe, str(e)), fg="red"), file=tee.stdin, flush=True)
-                print(click.style("*" * 80, fg=color), file=tee.stdin, flush=True)
+    installer.install(util.deserialize(args_serialized), machine)
 
 # show
 # -----------------------------------------------------------------------------
@@ -299,6 +262,14 @@ def show_job_cmd(machine, job_id):
 @on_machine_cmd(show, "projects")
 def show_projects_cmd(machine):
     stats.show_projects()
+
+@on_machine_cmd(show, "install")
+@click.option("-p", "--project", help="Target (base) project. Defaults to the project of the current directory.",
+              callback=lambda _c, _p, v: project.project_name_of_cwd() if not v else v)
+@dependency_option
+def show_install_cmd(machine, project, dependency):
+    for d, r in parse_dependencies(dependency):
+        stats.show_install_detail(project, d, r, machine)
 
 # show log
 # -----------------------------------------------------------------------------

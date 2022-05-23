@@ -6,6 +6,7 @@ from . import settings
 from . import atomic_counter
 from . import worker
 from . import job_manager
+from . import installer
 
 def show_queues(machine):
     queues = sorted(os.listdir(settings.queue_dirpath(machine)))
@@ -57,11 +58,18 @@ def show_job_detail(machine, job_id):
     table.append(["Context Project", state.context.project if state.context else None])
     table.append(["Context Ref", state.context.reference if state.context else None])
     table.append(["Context Diff", state.context.diff if state.context else None])
-    table.append(["Dependencies", state.dependencies])
     table.append(["Commands", state.commands])
     print(tabulate.tabulate(table))
+    for d in state.dependency_states:
+        print("\n")
+        print("Dependency {}:{}:".format(d.dependency, d.recipe))
+        installer.show_detail(d)
 
 def show_projects():
     projects = sorted(os.listdir(settings.project_dirpath()))
     for p in projects:
         print(p)
+
+def show_install_detail(project_name, dependency, recipe, machine):
+    state = installer.get_state(project_name, dependency, recipe, machine)
+    installer.show_detail(state)
