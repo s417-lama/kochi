@@ -1,5 +1,6 @@
 import os
 import datetime
+import tabulate
 
 from . import settings
 from . import atomic_counter
@@ -12,14 +13,16 @@ def show_queues(machine):
 
 def show_workers(machine, all):
     max_workers = atomic_counter.fetch(settings.worker_counter_filepath(machine))
+    table = []
     for idx in range(max_workers):
         state = worker.get_state(machine, idx)
         if all or state.running_state == worker.RunningState.RUNNING:
-            init_dt   = datetime.datetime.fromtimestamp(state.init_time)
-            start_dt  = datetime.datetime.fromtimestamp(state.start_time)
-            latest_dt = datetime.datetime.fromtimestamp(state.latest_time)
-            print("Worker {} {} {} {} {} {}".format(idx, state.running_state,
-                  init_dt, start_dt, latest_dt, latest_dt - start_dt))
+            init_dt   = datetime.datetime.fromtimestamp(state.init_time)   if state.init_time   else None
+            start_dt  = datetime.datetime.fromtimestamp(state.start_time)  if state.start_time  else None
+            latest_dt = datetime.datetime.fromtimestamp(state.latest_time) if state.latest_time else None
+            table.append([idx, str(state.running_state), init_dt, start_dt,
+                          latest_dt - start_dt if start_dt and latest_dt else None])
+    print(tabulate.tabulate(table, headers=["ID", "State", "Created Time", "Start Time", "Running Time"]))
 
 def show_jobs(machine):
     max_jobs = atomic_counter.fetch(settings.job_counter_filepath(machine))

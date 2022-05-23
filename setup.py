@@ -14,5 +14,6 @@ setup(
         "click",
         "pyyaml",
         "psutil",
+        "tabulate",
     ],
 )
