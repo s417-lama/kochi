@@ -212,6 +212,8 @@ def get_install_context(dep_config, recipe_config, login_host, git_remote):
         if recipe_config.get("current_status"):
             raise click.UsageError("'current_status' cannot be used in 'git_remote' dependency.")
         return context.create_with_project_config(recipe_config, dep_config["git_remote"])
+    else:
+        return None
 
 @cli.command(name="install")
 @machine_option
@@ -228,7 +230,7 @@ def install_cmd(click_ctx, machine, dependency, recipe_name, git_remote):
     dep_config = settings.project_dep_config(dependency)
     recipe_config = settings.project_dep_recipe_config(dependency, recipe_name)
     ctx = get_install_context(dep_config, recipe_config, login_host, git_remote)
-    args = InstallArgs(project_name, dependency, recipe_name, ctx, recipe_config["envs"], recipe_config["commands"])
+    args = InstallArgs(project_name, dependency, recipe_name, ctx, recipe_config.get("envs", dict()), recipe_config["commands"])
     if machine == "local":
         click_ctx.invoke(install_aux_cmd, args_serialized=util.serialize(args))
     else:

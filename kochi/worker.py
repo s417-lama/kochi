@@ -25,7 +25,7 @@ def worker_loop(idx, queue_name, blocking, machine, stdout):
     while True:
         job = job_queue.pop(machine, queue_name)
         if job:
-            job_manager.run_job(job, idx, machine, stdout)
+            job_manager.run_job(job, idx, machine, queue_name, stdout)
         elif blocking:
             time.sleep(0.1) # TODO: monitor filesystem events?
         else:

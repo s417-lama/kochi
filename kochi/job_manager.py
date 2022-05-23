@@ -38,7 +38,7 @@ def on_finish_job(job, worker_id, machine):
         f.write(util.serialize(next_state))
         f.truncate()
 
-def run_job(job, worker_id, machine, stdout):
+def run_job(job, worker_id, machine, queue_name, stdout):
     color = "blue"
     print(click.style("Kochi job {} (ID={}) started.".format(job.name, job.id), fg=color), file=stdout, flush=True)
     print(click.style("-" * 80, fg=color), file=stdout, flush=True)
@@ -46,10 +46,14 @@ def run_job(job, worker_id, machine, stdout):
         with subprocess.Popen(["tee", settings.job_log_filepath(machine, job.id)], stdin=subprocess.PIPE, stdout=stdout, encoding="utf-8", start_new_session=True) as tee:
             on_start_job(job, worker_id, machine)
             env = os.environ.copy()
+            env["KOCHI_MACHINE"] = machine
+            env["KOCHI_WORKER_ID"] = str(worker_id)
+            env["KOCHI_QUEUE"] = queue_name
             env["KOCHI_JOB_ID"] = str(job.id)
             env["KOCHI_JOB_NAME"] = job.name
             for dep, recipe in job.dependencies:
                 env["KOCHI_INSTALL_PREFIX_" + dep.upper()] = settings.project_dep_install_dirpath(job.context.project, machine, dep, recipe)
+                env["KOCHI_RECIPE_" + dep.upper()] = recipe
             try:
                 subprocess.run(job.commands, env=env, shell=not isinstance(job.commands, list), stdout=tee.stdin, stderr=tee.stdin, check=True)
             except KeyboardInterrupt:
