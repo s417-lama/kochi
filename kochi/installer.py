@@ -69,7 +69,7 @@ def get_state(project_name, dependency, recipe, machine):
         with open(settings.project_dep_install_state_filepath(project_name, machine, dependency, recipe), "r") as f:
             return util.deserialize(f.read())
     except:
-        raise Exception("Something went wrong with installation for dependency {}:{}. Try installing again.")
+        raise Exception("Something went wrong with installation for dependency {}:{}. Try installing again.".format(dependency, recipe))
 
 def show_detail(state):
     table = []
