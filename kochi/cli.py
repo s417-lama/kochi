@@ -64,12 +64,12 @@ def alloc_interact_cmd(machine, nodes):
     config = settings.machine_config(machine)
     login_host = settings.machine_config(machine)["login_host"]
     env_dict = dict(KOCHI_ALLOC_NODE_SPEC=nodes)
-    util.run_command_ssh_interactive(login_host, config["alloc_interact"], cwd=config.get("work_dir"), env=env_dict)
+    util.run_command_ssh_expect(login_host, config["alloc_interact"], config.get("load_env_commands", []), cwd=config.get("work_dir"), env=env_dict)
 
 # alloc
 # -----------------------------------------------------------------------------
 
-AllocArgs = namedtuple("AllocArgs", ["queue", "nodes", "duplicates", "time_limit", "commands"])
+AllocArgs = namedtuple("AllocArgs", ["queue", "nodes", "duplicates", "time_limit", "load_env_commands", "commands"])
 
 @cli.command(name="alloc")
 @machine_option
@@ -85,7 +85,7 @@ def alloc_cmd(machine, queue, nodes, duplicates, time_limit):
         raise click.UsageError("MACHINE cannot be 'local'.")
     config = settings.machine_config(machine)
     login_host = config["login_host"]
-    args = AllocArgs(queue, nodes, duplicates, time_limit, config["alloc"])
+    args = AllocArgs(queue, nodes, duplicates, time_limit, config.get("load_env_commands", []), config["alloc"])
     util.run_command_ssh_interactive(login_host, "kochi alloc_aux -m {} {}".format(machine, util.serialize(args)),
                                      cwd=config.get("work_dir"))
 
@@ -98,12 +98,14 @@ def alloc_aux_cmd(machine, args_serialized):
     """
     args = util.deserialize(args_serialized)
     for i in range(args.duplicates):
-        worker_id = worker.init(machine, args.queue)
+        worker_id = worker.init(machine, args.queue, -1)
+        cmds = args.load_env_commands + ["kochi work -m {} -q {} -i {}".format(machine, args.queue, worker_id)]
         env_dict = dict(
             KOCHI_ALLOC_NODE_SPEC=args.nodes,
             KOCHI_ALLOC_TIME_LIMIT=args.time_limit,
-            KOCHI_WORKER_LAUNCH_CMD="kochi work -m {} -q {} -i {}".format(machine, args.queue, worker_id),
+            KOCHI_WORKER_LAUNCH_CMD=" && ".join(cmds),
         )
+        print(env_dict)
         try:
             subprocess.run(util.decorate_command(args.commands, env=env_dict), shell=True, check=True)
             click.secho("Worker {} submitted on machine {}.".format(worker_id, machine), fg="green")
@@ -194,7 +196,7 @@ def work_cmd(machine, queue, blocking, worker_id):
     Start a new worker that works on queue QUEUE.
     Assume that this command is invoked on machine MACHINE.
     """
-    worker_id = worker.init(machine, queue, worker_id)
+    worker_id = worker.init(machine, queue, worker_id) if worker_id == -1 else worker_id
     worker.start(queue, blocking, worker_id, machine)
 
 # install
@@ -210,12 +212,13 @@ def install_cmd(click_ctx, machine, dependency, git_remote):
     Install projects that are depended on by this repository on machine MACHINE.
     """
     project_name = project.project_name_of_cwd()
-    login_host = settings.machine_config(machine)["login_host"] if machine != "local" else None
+    machine_config = settings.machine_config(machine)
+    login_host = machine_config["login_host"] if machine != "local" else None
     for d, r in parse_dependencies(dependency):
         dep_config = settings.project_dep_configs()[d]
         recipe_config = settings.project_dep_recipe_configs(d)[r]
         ctx = installer.get_install_context(dep_config, recipe_config, login_host, git_remote)
-        args = installer.InstallConf(project_name, d, r, ctx, recipe_config.get("envs", dict()), recipe_config["commands"])
+        args = installer.InstallConf(project_name, d, r, ctx, recipe_config.get("envs", dict()), machine_config.get("load_env_commands", []), recipe_config["commands"])
         if machine == "local":
             click_ctx.invoke(install_aux_cmd, args_serialized=util.serialize(args))
         else:

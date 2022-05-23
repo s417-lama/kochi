@@ -15,5 +15,6 @@ setup(
         "pyyaml",
         "psutil",
         "tabulate",
+        "pexpect",
     ],
 )

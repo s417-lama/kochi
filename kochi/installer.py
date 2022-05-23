@@ -12,8 +12,8 @@ from . import settings
 from . import project
 from . import context
 
-InstallConf = namedtuple("InstallConf", ["project", "dependency", "recipe", "context", "envs", "commands"])
-state_fields = ["project", "dependency", "recipe", "context", "envs", "commands", "installed_time", "commit_hash"]
+InstallConf = namedtuple("InstallConf", ["project", "dependency", "recipe", "context", "envs", "load_env_commands", "commands"])
+state_fields = ["project", "dependency", "recipe", "context", "envs", "load_env_commands", "commands", "installed_time", "commit_hash"]
 State = namedtuple("State", state_fields)
 
 def get_install_context(dep_config, recipe_config, login_host, git_remote):
@@ -37,7 +37,7 @@ def get_install_context(dep_config, recipe_config, login_host, git_remote):
 def on_complete(conf, machine):
     commit_hash = subprocess.run(["git", "rev-parse", conf.context.reference], stdout=subprocess.PIPE, encoding="utf-8", check=True).stdout.strip() if conf.context else None
     with open(settings.project_dep_install_state_filepath(conf.project, machine, conf.dependency, conf.recipe), "w") as f:
-        state = State(conf.project, conf.dependency, conf.recipe, conf.context, conf.envs, conf.commands, time.time(), commit_hash)
+        state = State(conf.project, conf.dependency, conf.recipe, conf.context, conf.envs, conf.load_env_commands, conf.commands, time.time(), commit_hash)
         f.write(util.serialize(state))
 
 def install(conf, machine):
@@ -55,7 +55,8 @@ def install(conf, machine):
                 for k, v in conf.envs.items():
                     env[k] = v
                 try:
-                    subprocess.run(util.decorate_command(conf.commands), env=env, shell=True, check=True, stdout=tee.stdin, stderr=tee.stdin)
+                    cmds = conf.load_env_commands + (conf.commands if isinstance(conf.commands, list) else [conf.commands])
+                    subprocess.run(" && ".join(cmds), env=env, shell=True, check=True, stdout=tee.stdin, stderr=tee.stdin)
                 except KeyboardInterrupt:
                     print(click.style("Kochi installation for {}:{} interrupted.".format(conf.dependency, conf.recipe), fg="red"), file=tee.stdin, flush=True)
                 except BaseException as e:
@@ -80,5 +81,6 @@ def show_detail(state):
     table.append(["Context Commit Hash", state.commit_hash])
     table.append(["Context Diff", state.context.diff if state.context else None])
     table.append(["Environments", state.envs])
+    table.append(["Commands to Load Environments", state.load_env_commands])
     table.append(["Commands", state.commands])
     print(tabulate.tabulate(table))

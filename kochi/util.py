@@ -8,6 +8,7 @@ import contextlib
 import pathlib
 import urllib
 import textwrap
+import pexpect
 
 def decorate_command(commands, **opts):
     cmds = ["export {}=\"{}\"".format(k, v) for k, v in opts.get("env").items() if v] if opts.get("env") else []
@@ -15,6 +16,12 @@ def decorate_command(commands, **opts):
         cmds.append("cd " + opts.get("cwd"))
     cmds.append("\n".join(commands) if isinstance(commands, list) else commands)
     return " && ".join(cmds)
+
+def run_command_ssh_expect(host, commands, send_commands, **opts):
+    p = pexpect.spawn("ssh -o LogLevel=QUIET -t {} '{}'".format(host, decorate_command(commands, **opts)))
+    for c in send_commands:
+        p.sendline(c)
+    p.interact()
 
 def run_command_ssh_interactive(host, commands, **opts):
     subprocess.run("ssh -o LogLevel=QUIET -t {} '{}'".format(host, decorate_command(commands, **opts)),
