@@ -105,8 +105,7 @@ def get_state(machine, job_id):
         return State(RunningState.INVALID, None, None, None, None, None, None, None, None, None)
 
 def init(job, machine, queue_name):
-    project_name = project.project_name_of_cwd()
     with open(settings.job_state_filepath(machine, job.id), "w") as f:
-        dependency_states = [installer.get_state(project_name, d, r, machine) for d, r in job.dependencies]
+        dependency_states = [installer.get_state(job.context.project, d, r, machine) for d, r in job.dependencies]
         state = State(RunningState.WAITING, job.name, queue_name, None, job.context, dependency_states, job.commands, current_timestamp(), None, None)
         f.write(util.serialize(state))
