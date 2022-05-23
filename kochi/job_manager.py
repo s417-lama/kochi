@@ -39,11 +39,11 @@ def on_finish_job(job, worker_id, machine):
         f.truncate()
 
 def run_job(job, worker_id, machine, queue_name, stdout):
-    color = "blue"
-    print(click.style("Kochi job {} (ID={}) started.".format(job.name, job.id), fg=color), file=stdout, flush=True)
-    print(click.style("-" * 80, fg=color), file=stdout, flush=True)
     with context.context(job.context):
         with util.tee(settings.job_log_filepath(machine, job.id), stdout=stdout) as tee:
+            color = "blue"
+            print(click.style("Kochi job {} (ID={}) started.".format(job.name, job.id), fg=color), file=tee.stdin, flush=True)
+            print(click.style("-" * 80, fg=color), file=tee.stdin, flush=True)
             on_start_job(job, worker_id, machine)
             env = os.environ.copy()
             env["KOCHI_MACHINE"] = machine
@@ -62,7 +62,7 @@ def run_job(job, worker_id, machine, queue_name, stdout):
                 print(click.style("Kochi job {} (ID={}) failed: {}".format(job.name, job.id, str(e)), fg="red"), file=tee.stdin, flush=True)
             finally:
                 on_finish_job(job, worker_id, machine)
-    print(click.style("-" * 80, fg=color), file=stdout, flush=True)
+            print(click.style("-" * 80, fg=color), file=tee.stdin, flush=True)
 
 def get_state(machine, job_id):
     try:
