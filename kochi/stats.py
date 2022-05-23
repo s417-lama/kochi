@@ -41,6 +41,26 @@ def show_jobs(machine, show_all, queues, names):
                           latest_dt - start_dt if start_dt and latest_dt else None])
     print(tabulate.tabulate(table, headers=["ID", "Name", "State", "Queue", "Worker ID", "Created Time", "Start Time", "Running Time"]))
 
+def show_job_detail(machine, job_id):
+    state = job_manager.get_state(machine, job_id)
+    table = []
+    table.append(["Job ID", job_id])
+    table.append(["Job Name", state.name])
+    table.append(["Running State", state.running_state])
+    table.append(["Queue", state.queue])
+    init_dt   = datetime.datetime.fromtimestamp(state.init_time)   if state.init_time   else None
+    start_dt  = datetime.datetime.fromtimestamp(state.start_time)  if state.start_time  else None
+    latest_dt = datetime.datetime.fromtimestamp(state.latest_time) if state.latest_time else None
+    table.append(["Created Time", init_dt])
+    table.append(["Start Time", start_dt])
+    table.append(["Running Time", latest_dt - start_dt if start_dt and latest_dt else None])
+    table.append(["Context Project", state.context.project if state.context else None])
+    table.append(["Context Ref", state.context.reference if state.context else None])
+    table.append(["Context Diff", state.context.diff if state.context else None])
+    table.append(["Dependencies", state.dependencies])
+    table.append(["Commands", state.commands])
+    print(tabulate.tabulate(table))
+
 def show_projects():
     projects = sorted(os.listdir(settings.project_dirpath()))
     for p in projects:

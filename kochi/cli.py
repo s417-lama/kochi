@@ -291,6 +291,11 @@ def show_workers_cmd(machine, all, queue):
 def show_jobs_cmd(machine, all, queue, name):
     stats.show_jobs(machine, all, queue, name)
 
+@on_machine_cmd(show, "job")
+@click.argument("job_id", required=True, type=int)
+def show_job_cmd(machine, job_id):
+    stats.show_job_detail(machine, job_id)
+
 @on_machine_cmd(show, "projects")
 def show_projects_cmd(machine):
     stats.show_projects()
