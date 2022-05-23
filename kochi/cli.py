@@ -263,14 +263,13 @@ def show_job_cmd(machine, job_id):
     stats.show_job_detail(machine, job_id)
 
 @on_machine_cmd(show, "installs")
-@click.option("-p", "--project", help="Target (base) project. Defaults to the project of the current directory.",
-              callback=lambda _c, _p, v: project.project_name_of_cwd() if not v else v)
-def show_installs_cmd(machine, project):
-    stats.show_installs(machine, project)
+@click.option("--project", hidden=True, callback=lambda _c, _p, v: project.project_name_of_cwd() if not v else v)
+@click.option("--dependencies", hidden=True, callback=lambda _c, _p, v: project.get_all_dependencies() if not v else v)
+def show_installs_cmd(machine, project, dependencies):
+    stats.show_installs(machine, project, dependencies);
 
 @on_machine_cmd(show, "install")
-@click.option("-p", "--project", help="Target (base) project. Defaults to the project of the current directory.",
-              callback=lambda _c, _p, v: project.project_name_of_cwd() if not v else v)
+@click.option("--project", hidden=True, callback=lambda _c, _p, v: project.project_name_of_cwd() if not v else v)
 @dependency_option
 def show_install_cmd(machine, project, dependency):
     for d, r in parse_dependencies(dependency):
@@ -306,8 +305,7 @@ def show_log_job_cmd(machine, job_id):
         click.echo_via_pager(f)
 
 @on_machine_cmd(log, "install")
-@click.option("-p", "--project", help="Target (base) project. Defaults to the project of the current directory.",
-              callback=lambda _c, _p, v: project.project_name_of_cwd() if not v else v)
+@click.option("--project", hidden=True, callback=lambda _c, _p, v: project.project_name_of_cwd() if not v else v)
 @dependency_option
 def show_log_install_cmd(machine, project, dependency):
     """

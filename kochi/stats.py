@@ -65,18 +65,17 @@ def show_job_detail(machine, job_id):
         print("Dependency {}:{}:".format(d.dependency, d.recipe))
         installer.show_detail(d)
 
-def show_installs(machine, project_name):
+def show_installs(machine, project_name, dependencies):
     table = []
-    for dependency, dep_config in settings.project_dep_configs().items():
-        for recipe, recipe_config in settings.project_dep_recipe_configs(dependency).items():
-            try:
-                state = installer.get_state(project_name, dependency, recipe, machine)
-                installation_state = "installed"
-                installed_time = datetime.datetime.fromtimestamp(state.installed_time)
-            except:
-                installation_state = "NOT installed"
-                installed_time = None
-            table.append([dependency, recipe, installation_state, installed_time])
+    for d, r in dependencies:
+        try:
+            state = installer.get_state(project_name, d, r, machine)
+            installation_state = "installed"
+            installed_time = datetime.datetime.fromtimestamp(state.installed_time)
+        except:
+            installation_state = "NOT installed"
+            installed_time = None
+        table.append([d, r, installation_state, installed_time])
     print(tabulate.tabulate(table, headers=["Dependency", "Recipe", "State", "Installed Time"]))
 
 def show_install_detail(machine, project_name, dependency, recipe):
