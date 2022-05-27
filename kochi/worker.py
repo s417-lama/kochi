@@ -1,6 +1,7 @@
 from collections import namedtuple
 import os
 import time
+import copy
 import click
 
 from . import util
@@ -55,10 +56,27 @@ def get_state(machine, worker_id):
     except:
         return State(RunningState.INVALID, None, None, None, None)
 
+def watch(machine, worker_ids):
+    if len(worker_ids) == 0:
+        return
+    log_files = [settings.worker_log_filepath(machine, w) for w in worker_ids]
+    remains = copy.copy(worker_ids)
+    with util.tailf(log_files):
+        while True:
+            for w in remains:
+                state = get_state(machine, w).running_state
+                if state == RunningState.TERMINATED or state == RunningState.INVALID:
+                    remains.remove(w)
+            if len(remains) == 0:
+                break
+            time.sleep(1)
+
 def init(machine, queue, worker_id):
     worker_id = get_worker_id(machine) if worker_id == -1 else worker_id
     with open(settings.worker_state_filepath(machine, worker_id), "w") as f:
         f.write(queue)
+    with open(settings.worker_log_filepath(machine, worker_id), "w") as f:
+        f.write("")
     heartbeat.init(settings.worker_heartbeat_filepath(machine, worker_id))
     return worker_id
 

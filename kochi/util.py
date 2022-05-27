@@ -104,3 +104,12 @@ def tee(filepath, **opts):
     stdout = opts.get("stdout", sys.stdout)
     with subprocess.Popen(["tee", filepath], stdin=subprocess.PIPE, encoding="utf-8", start_new_session=True, stdout=stdout) as p:
         yield p
+
+@contextlib.contextmanager
+def tailf(filepaths, **opts):
+    stdout = opts.get("stdout", sys.stdout)
+    with subprocess.Popen(["tail", "-F"] + filepaths, encoding="utf-8", stdout=stdout, stderr=subprocess.DEVNULL) as p:
+        try:
+            yield p
+        finally:
+            p.terminate()

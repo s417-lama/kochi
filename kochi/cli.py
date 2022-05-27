@@ -81,7 +81,7 @@ def alloc_interact_cmd(machine, nodes):
 # alloc
 # -----------------------------------------------------------------------------
 
-AllocArgs = namedtuple("AllocArgs", ["queue", "nodes", "duplicates", "time_limit", "load_env_script", "alloc_script"])
+AllocArgs = namedtuple("AllocArgs", ["queue", "nodes", "duplicates", "time_limit", "follow", "load_env_script", "alloc_script"])
 
 @cli.command(name="alloc")
 @machine_option
@@ -89,13 +89,14 @@ AllocArgs = namedtuple("AllocArgs", ["queue", "nodes", "duplicates", "time_limit
 @click.option("-n", "--nodes", metavar="NODES_SPEC", default="1", help="Specification of nodes to be allocated on machine MACHINE")
 @click.option("-d", "--duplicates", metavar="DUPLICATES", type=int, default=1, help="Number of workers to be created")
 @click.option("-t", "--time-limit", metavar="TIME_LIMIT", help="Time limit for the system job")
-def alloc_cmd(machine, queue, nodes, duplicates, time_limit):
+@click.option("-f", "--follow", is_flag=True, default=False, help="Wait for worker allocation and output log as grows")
+def alloc_cmd(machine, queue, nodes, duplicates, time_limit, follow):
     """
     Allocates nodes of NODES_SPEC on MACHINE as an interactive job
     """
     if machine == "local":
         raise click.UsageError("MACHINE cannot be 'local'.")
-    args = AllocArgs(queue, nodes, duplicates, time_limit, config.load_env_machine_script(machine), config.alloc_script(machine))
+    args = AllocArgs(queue, nodes, duplicates, time_limit, follow, config.load_env_machine_script(machine), config.alloc_script(machine))
     run_on_login_node(machine, "kochi alloc_aux -m {} {}".format(machine, util.serialize(args)))
 
 @cli.command(name="alloc_aux", hidden=True)
@@ -106,6 +107,7 @@ def alloc_aux_cmd(machine, args_serialized):
     For internal use only.
     """
     args = util.deserialize(args_serialized)
+    worker_ids = []
     for i in range(args.duplicates):
         worker_id = worker.init(machine, args.queue, -1)
         cmds = args.load_env_script + ["kochi work -m {} -q {} -i {}".format(machine, args.queue, worker_id)]
@@ -116,10 +118,13 @@ def alloc_aux_cmd(machine, args_serialized):
         )
         try:
             subprocess.run(util.decorate_command(args.alloc_script, env=env_dict), shell=True, check=True)
-            click.secho("Worker {} submitted on machine {}.".format(worker_id, machine), fg="green")
         except subprocess.CalledProcessError:
             click.secho("Submission of a system job for worker {} failed on machine {}.".format(worker_id, machine), fg="red", file=sys.stderr)
             exit(1)
+        click.secho("Worker {} submitted on machine {}.".format(worker_id, machine), fg="green")
+        worker_ids.append(worker_id)
+    if args.follow:
+        worker.watch(machine, worker_ids)
 
 # enqueue
 # -----------------------------------------------------------------------------
