@@ -19,8 +19,7 @@ def root_config():
     return loaded_config
 
 def keyerror(key):
-    print("Config does not have key '{}' (config file: {})".format(key, settings.config_filepath()), file=sys.stderr)
-    exit(1)
+    raise Exception("Config does not have key '{}' (config file: {})".format(key, settings.config_filepath()))
 
 def dict_get(d, k, **opts):
     if "default" in opts:
@@ -55,11 +54,27 @@ def alloc_script(m):
 def alloc_interact_script(m):
     return wrap_list(dict_get(machine(m), "alloc_interact_script"))
 
-def load_env_script(m):
-    return wrap_list(dict_get(machine(m), "load_env_script", default=[]))
+def _load_env_script(m, key):
+    s = ["export KOCHI_ROOT={}".format(root_dir(m))] if root_dir(m) else []
+    ls = dict_get(machine(m), "load_env_script", default=None)
+    if isinstance(ls, list) or isinstance(ls, str):
+        return s + wrap_list(ls)
+    elif isinstance(ls, dict):
+        return s + wrap_list(dict_get(ls, key, default=[]))
+    else:
+        return s
+
+def load_env_login_script(m):
+    return _load_env_script(m, "on_login_node")
+
+def load_env_machine_script(m):
+    return _load_env_script(m, "on_machine")
 
 def work_dir(m):
     return dict_get(machine(m), "work_dir", default=None)
+
+def root_dir(m):
+    return dict_get(machine(m), "kochi_root", default=None)
 
 # Dependencies
 # -----------------------------------------------------------------------------

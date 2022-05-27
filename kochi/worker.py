@@ -62,6 +62,13 @@ def init(machine, queue, worker_id):
     heartbeat.init(settings.worker_heartbeat_filepath(machine, worker_id))
     return worker_id
 
+def ensure_init(machine):
+    os.makedirs(settings.worker_dirpath(machine), exist_ok=True)
+    try:
+        atomic_counter.fetch(settings.worker_counter_filepath(machine))
+    except:
+        atomic_counter.reset(settings.worker_counter_filepath(machine))
+
 if __name__ == "__main__":
     """
     machine1$ python3 -m kochi.worker

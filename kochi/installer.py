@@ -12,11 +12,11 @@ from . import config
 from . import project
 from . import context
 
-InstallConf = namedtuple("InstallConf", ["project", "dependency", "recipe", "context", "envs", "load_env_script", "script"])
-state_fields = ["project", "dependency", "recipe", "context", "envs", "load_env_script", "script", "installed_time", "commit_hash"]
+InstallConf = namedtuple("InstallConf", ["project", "dependency", "recipe", "context", "envs", "script"])
+state_fields = ["project", "dependency", "recipe", "context", "envs", "script", "installed_time", "commit_hash"]
 State = namedtuple("State", state_fields)
 
-def get_install_context(dep, recipe, login_host):
+def get_install_context(machine, dep, recipe):
     git_path = config.recipe_git(dep, recipe)
     if git_path:
         if util.is_git_remote(git_path):
@@ -24,7 +24,7 @@ def get_install_context(dep, recipe, login_host):
         else:
             with util.cwd(util.toplevel_git_dirpath()):
                 with util.cwd(git_path):
-                    project.sync(login_host)
+                    project.sync(machine)
                     return context.create_for_recipe(dep, recipe, None)
     else:
         return None
@@ -32,7 +32,7 @@ def get_install_context(dep, recipe, login_host):
 def on_complete(conf, machine):
     commit_hash = subprocess.run(["git", "rev-parse", conf.context.reference], stdout=subprocess.PIPE, encoding="utf-8", check=True).stdout.strip() if conf.context else None
     with open(settings.project_dep_install_state_filepath(conf.project, machine, conf.dependency, conf.recipe), "w") as f:
-        state = State(conf.project, conf.dependency, conf.recipe, conf.context, conf.envs, conf.load_env_script, conf.script, time.time(), commit_hash)
+        state = State(conf.project, conf.dependency, conf.recipe, conf.context, conf.envs, conf.script, time.time(), commit_hash)
         f.write(util.serialize(state))
 
 def install(conf, machine):
@@ -50,7 +50,7 @@ def install(conf, machine):
                 for k, v in conf.envs.items():
                     env[k] = v
                 try:
-                    scripts = conf.load_env_script + (conf.script if isinstance(conf.script, list) else [conf.script])
+                    scripts = conf.script if isinstance(conf.script, list) else [conf.script]
                     subprocess.run(" && ".join(scripts), env=env, shell=True, check=True, stdout=tee.stdin, stderr=tee.stdin)
                 except KeyboardInterrupt:
                     print(click.style("Kochi installation for {}:{} interrupted.".format(conf.dependency, conf.recipe), fg="red"), file=tee.stdin, flush=True)
@@ -76,6 +76,5 @@ def show_detail(state):
     table.append(["Context Commit Hash", state.commit_hash])
     table.append(["Context Diff", state.context.diff if state.context else None])
     table.append(["Environments", state.envs])
-    table.append(["Script to Load Environments", state.load_env_script])
     table.append(["Script", state.script])
     print(tabulate.tabulate(table))

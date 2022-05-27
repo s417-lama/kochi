@@ -11,19 +11,32 @@ from . import config
 from . import stats
 from . import worker
 from . import job_queue
+from . import job_manager
 from . import context
 from . import project
 from . import sshd
 from . import installer
 
+def ensure_init():
+    sshd.ensure_init()
+
+def ensure_init_machine(machine):
+    worker.ensure_init(machine)
+    job_manager.ensure_init(machine)
+    job_queue.ensure_init(machine)
+
+def run_on_login_node(machine, script, **opts):
+    util.run_command_ssh_interactive(config.login_host(machine), config.load_env_login_script(machine) + [script],
+                                     cwd=config.work_dir(machine), env=opts.get("env"))
+
 machine_option = click.option("-m", "--machine", metavar="MACHINE", default="local", help="Machine name",
-                              callback=lambda _c, _p, v: (settings.ensure_init_machine(v), v)[-1])
+                              callback=lambda _c, _p, v: (ensure_init_machine(v), v)[-1])
 
 on_machine_option = click.option("--on-machine", is_flag=True, default=False, hidden=True)
 
 @click.group()
 def cli():
-    settings.ensure_init()
+    ensure_init()
 
 @cli.command(name="on_machine_aux", hidden=True)
 @machine_option
@@ -44,8 +57,7 @@ def on_machine_cmd(group, name):
                 f(machine, *args, **kwargs)
             else:
                 args_serialized = util.serialize(dict(funcname=f.__name__, kwargs=kwargs))
-                cmd_on_machine = "kochi on_machine_aux -m {} {}".format(machine, args_serialized)
-                util.run_command_ssh_interactive(config.login_host(machine), cmd_on_machine)
+                run_on_login_node(machine, "kochi on_machine_aux -m {} {}".format(machine, args_serialized))
         return wrapper
     return decorator
 
@@ -62,8 +74,9 @@ def alloc_interact_cmd(machine, nodes):
     if machine == "local":
         raise click.UsageError("MACHINE cannot be 'local'.")
     env_dict = dict(KOCHI_ALLOC_NODE_SPEC=nodes)
-    util.run_command_ssh_expect(config.login_host(machine), config.alloc_interact_script(machine),
-                                config.load_env_script(machine), cwd=config.work_dir(machine), env=env_dict)
+    on_login_node_scripts = config.load_env_login_script(machine) + config.alloc_interact_script(machine)
+    util.run_command_ssh_expect(config.login_host(machine), on_login_node_scripts,
+                                config.load_env_machine_script(machine), cwd=config.work_dir(machine), env=env_dict)
 
 # alloc
 # -----------------------------------------------------------------------------
@@ -82,9 +95,8 @@ def alloc_cmd(machine, queue, nodes, duplicates, time_limit):
     """
     if machine == "local":
         raise click.UsageError("MACHINE cannot be 'local'.")
-    args = AllocArgs(queue, nodes, duplicates, time_limit, config.load_env_script(machine), config.alloc_script(machine))
-    util.run_command_ssh_interactive(config.login_host(machine), "kochi alloc_aux -m {} {}".format(machine, util.serialize(args)),
-                                     cwd=config.work_dir(machine))
+    args = AllocArgs(queue, nodes, duplicates, time_limit, config.load_env_machine_script(machine), config.alloc_script(machine))
+    run_on_login_node(machine, "kochi alloc_aux -m {} {}".format(machine, util.serialize(args)))
 
 @cli.command(name="alloc_aux", hidden=True)
 @machine_option
@@ -102,7 +114,6 @@ def alloc_aux_cmd(machine, args_serialized):
             KOCHI_ALLOC_TIME_LIMIT=args.time_limit,
             KOCHI_WORKER_LAUNCH_CMD=" && ".join(cmds),
         )
-        print(env_dict)
         try:
             subprocess.run(util.decorate_command(args.alloc_script, env=env_dict), shell=True, check=True)
             click.secho("Worker {} submitted on machine {}.".format(worker_id, machine), fg="green")
@@ -138,9 +149,8 @@ def enqueue_cmd(machine, queue, with_context, dependency, name, git_remote, comm
     """
     if with_context and not util.is_inside_git_dir():
         raise click.UsageError("--with-context (-c) option must be used inside a git directory.")
-    login_host = config.login_host(machine) if machine != "local" else None
     if with_context and not git_remote:
-        project.sync(login_host)
+        project.sync(machine)
     ctx = context.create(git_remote) if with_context else None
     deps = parse_dependencies(dependency)
     job = job_queue.Job(name=name, machine=machine, queue=queue, dependencies=deps, context=ctx, commands=list(commands))
@@ -148,7 +158,7 @@ def enqueue_cmd(machine, queue, with_context, dependency, name, git_remote, comm
         job_enqueued = job_queue.push(job)
         click.secho("Job {} submitted on machine {}.".format(job_enqueued.id, machine), fg="blue")
     else:
-        util.run_command_ssh_interactive(login_host, "kochi enqueue_aux -m {} {}".format(machine, util.serialize(job)))
+        run_on_login_node(machine, "kochi enqueue_aux -m {} {}".format(machine, util.serialize(job)))
 
 @cli.command(name="enqueue_aux", hidden=True)
 @machine_option
@@ -177,7 +187,7 @@ def inspect_cmd(machine, on_machine, worker_id):
     if on_machine:
         sshd.login_to_machine(machine, worker_id)
     else:
-        util.run_command_ssh_interactive(config.login_host(machine), "kochi inspect -m {} --on-machine {}".format(machine, worker_id))
+        run_on_login_node(machine, "kochi inspect -m {} --on-machine {}".format(machine, worker_id))
 
 # work
 # -----------------------------------------------------------------------------
@@ -207,15 +217,13 @@ def install_cmd(click_ctx, machine, dependency):
     Install projects that are depended on by this repository on MACHINE.
     """
     project_name = project.project_name_of_cwd()
-    login_host = config.login_host(machine) if machine != "local" else None
     for d, r in parse_dependencies(dependency):
-        ctx = installer.get_install_context(d, r, login_host)
-        args = installer.InstallConf(project_name, d, r, ctx, config.recipe_envs(d, r),
-                                     config.load_env_script(machine) if machine != "local" else [], config.recipe_script(d, r))
+        ctx = installer.get_install_context(machine, d, r)
+        args = installer.InstallConf(project_name, d, r, ctx, config.recipe_envs(d, r), config.recipe_script(d, r))
         if machine == "local":
             click_ctx.invoke(install_aux_cmd, args_serialized=util.serialize(args))
         else:
-            util.run_command_ssh_interactive(login_host, "kochi install_aux -m {} {}".format(machine, util.serialize(args)))
+            run_on_login_node(machine, "kochi install_aux -m {} {}".format(machine, util.serialize(args)))
 
 @cli.command(name="install_aux", hidden=True)
 @machine_option

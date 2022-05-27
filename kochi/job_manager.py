@@ -10,7 +10,7 @@ from . import settings
 from . import context
 from . import heartbeat
 from . import installer
-from . import project
+from . import atomic_counter
 
 class RunningState(enum.IntEnum):
     def __str__(self):
@@ -109,3 +109,10 @@ def init(job, machine, queue_name):
         dependency_states = [installer.get_state(job.context.project, d, r, machine) for d, r in job.dependencies]
         state = State(RunningState.WAITING, job.name, queue_name, None, job.context, dependency_states, job.commands, current_timestamp(), None, None)
         f.write(util.serialize(state))
+
+def ensure_init(machine):
+    os.makedirs(settings.job_dirpath(machine), exist_ok=True)
+    try:
+        atomic_counter.fetch(settings.job_counter_filepath(machine))
+    except:
+        atomic_counter.reset(settings.job_counter_filepath(machine))

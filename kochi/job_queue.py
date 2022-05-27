@@ -1,4 +1,5 @@
 from collections import namedtuple
+import os
 
 from . import util
 from . import settings
@@ -22,6 +23,9 @@ def pop(machine, queue):
         return util.deserialize(job_serialized)
     else:
         return None
+
+def ensure_init(machine):
+    os.makedirs(settings.queue_dirpath(machine), exist_ok=True)
 
 if __name__ == "__main__":
     """

@@ -1,7 +1,6 @@
 import os
 
 from . import util
-from . import atomic_counter
 
 def root_path():
     return os.environ.get("KOCHI_ROOT", os.path.join(os.path.expanduser("~"), ".kochi"))
@@ -117,34 +116,3 @@ def sshd_client_config_filepath(machine, worker_id):
 
 def sshd_port():
     return os.environ.get("KOCHI_SSH_PORT", 2022)
-
-# Init
-# -----------------------------------------------------------------------------
-
-def ensure_init():
-    os.makedirs(project_dirpath() , exist_ok=True)
-    os.makedirs(sshd_dirpath()    , exist_ok=True)
-    os.makedirs(sshd_etc_dirpath(), exist_ok=True)
-    if not os.path.isfile(sshd_hostkey_filepath()):
-        util.ssh_keygen(sshd_hostkey_filepath())
-    if not os.path.isfile(sshd_clientkey_filepath()):
-        util.ssh_keygen(sshd_clientkey_filepath())
-        with open(sshd_authorized_keys_filepath(), "w") as fw:
-            with open(sshd_clientpubkey_filepath(), "r") as fr:
-                fw.write(fr.read())
-    if not os.path.isfile(sshd_config_filepath()):
-        with open(sshd_config_filepath(), "w") as f:
-            f.write(sshd_config())
-
-def ensure_init_machine(machine):
-    os.makedirs(queue_dirpath(machine) , exist_ok=True)
-    os.makedirs(worker_dirpath(machine), exist_ok=True)
-    os.makedirs(job_dirpath(machine)   , exist_ok=True)
-    try:
-        atomic_counter.fetch(worker_counter_filepath(machine))
-    except:
-        atomic_counter.reset(worker_counter_filepath(machine))
-    try:
-        atomic_counter.fetch(job_counter_filepath(machine))
-    except:
-        atomic_counter.reset(job_counter_filepath(machine))

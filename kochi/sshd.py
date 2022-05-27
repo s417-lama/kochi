@@ -54,3 +54,17 @@ def login_to_machine(machine, worker_id):
     except subprocess.CalledProcessError:
         print("ssh to worker {} on machine {} failed.".format(worker_id, machine), file=sys.stderr)
         exit(1)
+
+def ensure_init():
+    os.makedirs(settings.sshd_dirpath()    , exist_ok=True)
+    os.makedirs(settings.sshd_etc_dirpath(), exist_ok=True)
+    if not os.path.isfile(settings.sshd_hostkey_filepath()):
+        util.ssh_keygen(settings.sshd_hostkey_filepath())
+    if not os.path.isfile(settings.sshd_clientkey_filepath()):
+        util.ssh_keygen(settings.sshd_clientkey_filepath())
+        with open(settings.sshd_authorized_keys_filepath(), "w") as fw:
+            with open(settings.sshd_clientpubkey_filepath(), "r") as fr:
+                fw.write(fr.read())
+    if not os.path.isfile(settings.sshd_config_filepath()):
+        with open(settings.sshd_config_filepath(), "w") as f:
+            f.write(settings.sshd_config())
