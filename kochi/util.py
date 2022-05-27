@@ -55,6 +55,16 @@ def tmpdir(path):
     finally:
         shutil.rmtree(path)
 
+def is_git_remote(s):
+    if len(s.split(":")) == 2:
+        # FIXME: too simple check for ssh host:path
+        return True
+    try:
+        parsed = urllib.parse.urlparse(s)
+        return all(parsed.scheme, parsed.netloc)
+    except:
+        return False
+
 def get_path(s):
     try:
         parsed = urllib.parse.urlparse(s)

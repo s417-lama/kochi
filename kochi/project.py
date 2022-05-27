@@ -3,15 +3,16 @@ import subprocess
 
 from . import util
 from . import settings
+from . import config
 
 def project_name_of_cwd():
     return util.git_repo_name(util.toplevel_git_dirpath())
 
 def get_all_dependencies():
     deps = []
-    for dependency, dep_config in settings.project_dep_configs().items():
-        for recipe, recipe_config in settings.project_dep_recipe_configs(dependency).items():
-            deps.append((dependency, recipe))
+    for d in config.dependency_list():
+        for r in config.recipe_list(d):
+            deps.append((d, r))
     return deps
 
 def ensure_init(host, project_name):

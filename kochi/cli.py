@@ -7,6 +7,7 @@ import click
 
 from . import util
 from . import settings
+from . import config
 from . import stats
 from . import worker
 from . import job_queue
@@ -44,8 +45,7 @@ def on_machine_cmd(group, name):
             else:
                 args_serialized = util.serialize(dict(funcname=f.__name__, kwargs=kwargs))
                 cmd_on_machine = "kochi on_machine_aux -m {} {}".format(machine, args_serialized)
-                login_host = settings.machine_config(machine)["login_host"]
-                util.run_command_ssh_interactive(login_host, cmd_on_machine)
+                util.run_command_ssh_interactive(config.login_host(machine), cmd_on_machine)
         return wrapper
     return decorator
 
@@ -57,19 +57,18 @@ def on_machine_cmd(group, name):
 @click.option("-n", "--nodes", metavar="NODES_SPEC", default="1", help="Specification of nodes to be allocated on machine MACHINE")
 def alloc_interact_cmd(machine, nodes):
     """
-    Allocates nodes of NODES_SPEC on machine MACHINE as an interactive job
+    Allocates nodes of NODES_SPEC on MACHINE as an interactive job
     """
     if machine == "local":
         raise click.UsageError("MACHINE cannot be 'local'.")
-    config = settings.machine_config(machine)
-    login_host = settings.machine_config(machine)["login_host"]
     env_dict = dict(KOCHI_ALLOC_NODE_SPEC=nodes)
-    util.run_command_ssh_expect(login_host, config["alloc_interact"], config.get("load_env_commands", []), cwd=config.get("work_dir"), env=env_dict)
+    util.run_command_ssh_expect(config.login_host(machine), config.alloc_interact_script(machine),
+                                config.load_env_script(machine), cwd=config.work_dir(machine), env=env_dict)
 
 # alloc
 # -----------------------------------------------------------------------------
 
-AllocArgs = namedtuple("AllocArgs", ["queue", "nodes", "duplicates", "time_limit", "load_env_commands", "commands"])
+AllocArgs = namedtuple("AllocArgs", ["queue", "nodes", "duplicates", "time_limit", "load_env_script", "alloc_script"])
 
 @cli.command(name="alloc")
 @machine_option
@@ -79,15 +78,13 @@ AllocArgs = namedtuple("AllocArgs", ["queue", "nodes", "duplicates", "time_limit
 @click.option("-t", "--time-limit", metavar="TIME_LIMIT", help="Time limit for the system job")
 def alloc_cmd(machine, queue, nodes, duplicates, time_limit):
     """
-    Allocates nodes of NODES_SPEC on machine MACHINE as an interactive job
+    Allocates nodes of NODES_SPEC on MACHINE as an interactive job
     """
     if machine == "local":
         raise click.UsageError("MACHINE cannot be 'local'.")
-    config = settings.machine_config(machine)
-    login_host = config["login_host"]
-    args = AllocArgs(queue, nodes, duplicates, time_limit, config.get("load_env_commands", []), config["alloc"])
-    util.run_command_ssh_interactive(login_host, "kochi alloc_aux -m {} {}".format(machine, util.serialize(args)),
-                                     cwd=config.get("work_dir"))
+    args = AllocArgs(queue, nodes, duplicates, time_limit, config.load_env_script(machine), config.alloc_script(machine))
+    util.run_command_ssh_interactive(config.login_host(machine), "kochi alloc_aux -m {} {}".format(machine, util.serialize(args)),
+                                     cwd=config.work_dir(machine))
 
 @cli.command(name="alloc_aux", hidden=True)
 @machine_option
@@ -99,7 +96,7 @@ def alloc_aux_cmd(machine, args_serialized):
     args = util.deserialize(args_serialized)
     for i in range(args.duplicates):
         worker_id = worker.init(machine, args.queue, -1)
-        cmds = args.load_env_commands + ["kochi work -m {} -q {} -i {}".format(machine, args.queue, worker_id)]
+        cmds = args.load_env_script + ["kochi work -m {} -q {} -i {}".format(machine, args.queue, worker_id)]
         env_dict = dict(
             KOCHI_ALLOC_NODE_SPEC=args.nodes,
             KOCHI_ALLOC_TIME_LIMIT=args.time_limit,
@@ -107,7 +104,7 @@ def alloc_aux_cmd(machine, args_serialized):
         )
         print(env_dict)
         try:
-            subprocess.run(util.decorate_command(args.commands, env=env_dict), shell=True, check=True)
+            subprocess.run(util.decorate_command(args.alloc_script, env=env_dict), shell=True, check=True)
             click.secho("Worker {} submitted on machine {}.".format(worker_id, machine), fg="green")
         except subprocess.CalledProcessError:
             click.secho("Submission of a system job for worker {} failed on machine {}.".format(worker_id, machine), fg="red", file=sys.stderr)
@@ -116,14 +113,14 @@ def alloc_aux_cmd(machine, args_serialized):
 # enqueue
 # -----------------------------------------------------------------------------
 
-dependency_option = click.option("-d", "--dependency", metavar="DEPENDENCY_NAME:RECIPE_NAME", multiple=True, help="Project dependencies specified in the config")
+dependency_option = click.option("-d", "--dependency", metavar="DEPENDENCY:RECIPE", multiple=True, help="Project dependencies specified in the config")
 
 def parse_dependencies(deps):
     ret = []
     for d in deps:
         ds = d.split(":")
         if len(ds) != 2:
-            raise click.UsageError("Dependency must be specified as '--dependency (-d) DEPENDENCY_NAME:RECIPE_NAME'")
+            raise click.UsageError("Dependency must be specified as '--dependency (-d) DEPENDENCY:RECIPE'")
         ret.append((ds[0], ds[1]))
     return ret
 
@@ -137,11 +134,11 @@ def parse_dependencies(deps):
 @click.argument("commands", required=True, nargs=-1, type=click.UNPROCESSED)
 def enqueue_cmd(machine, queue, with_context, dependency, name, git_remote, commands):
     """
-    Enqueues a job that runs commands COMMANDS to queue QUEUE on machine MACHINE.
+    Enqueues a job that runs COMMANDS to QUEUE on MACHINE.
     """
     if with_context and not util.is_inside_git_dir():
         raise click.UsageError("--with-context (-c) option must be used inside a git directory.")
-    login_host = settings.machine_config(machine)["login_host"] if machine != "local" else None
+    login_host = config.login_host(machine) if machine != "local" else None
     if with_context and not git_remote:
         project.sync(login_host)
     ctx = context.create(git_remote) if with_context else None
@@ -173,15 +170,14 @@ def enqueue_aux_cmd(machine, job_serialized):
 @click.argument("worker_id", type=int, required=True)
 def inspect_cmd(machine, on_machine, worker_id):
     """
-    Inspect worker of WORKER_ID by connecting to the machine where the worker is running.
+    Inspect worker of WORKER_ID by connecting to MACHINE where the worker is running.
     """
     if machine == "local":
         raise click.UsageError("MACHINE cannot be 'local'.")
     if on_machine:
         sshd.login_to_machine(machine, worker_id)
     else:
-        login_host = settings.machine_config(machine)["login_host"]
-        util.run_command_ssh_interactive(login_host, "kochi inspect -m {} --on-machine {}".format(machine, worker_id))
+        util.run_command_ssh_interactive(config.login_host(machine), "kochi inspect -m {} --on-machine {}".format(machine, worker_id))
 
 # work
 # -----------------------------------------------------------------------------
@@ -193,8 +189,8 @@ def inspect_cmd(machine, on_machine, worker_id):
 @click.option("-i", "--worker-id", type=int, default=-1, hidden=True, help="For internal use only")
 def work_cmd(machine, queue, blocking, worker_id):
     """
-    Start a new worker that works on queue QUEUE.
-    Assume that this command is invoked on machine MACHINE.
+    Start a new worker that works on QUEUE.
+    Assume that this command is invoked on MACHINE.
     """
     worker_id = worker.init(machine, queue, worker_id) if worker_id == -1 else worker_id
     worker.start(queue, blocking, worker_id, machine)
@@ -205,20 +201,17 @@ def work_cmd(machine, queue, blocking, worker_id):
 @cli.command(name="install")
 @machine_option
 @dependency_option
-@click.option("-g", "--git-remote", help="URL or path to remote git repository. By default, a remote repository is created on the remote machine via ssh.")
 @click.pass_context
-def install_cmd(click_ctx, machine, dependency, git_remote):
+def install_cmd(click_ctx, machine, dependency):
     """
-    Install projects that are depended on by this repository on machine MACHINE.
+    Install projects that are depended on by this repository on MACHINE.
     """
     project_name = project.project_name_of_cwd()
-    machine_config = settings.machine_config(machine)
-    login_host = machine_config["login_host"] if machine != "local" else None
+    login_host = config.login_host(machine) if machine != "local" else None
     for d, r in parse_dependencies(dependency):
-        dep_config = settings.project_dep_configs()[d]
-        recipe_config = settings.project_dep_recipe_configs(d)[r]
-        ctx = installer.get_install_context(dep_config, recipe_config, login_host, git_remote)
-        args = installer.InstallConf(project_name, d, r, ctx, recipe_config.get("envs", dict()), machine_config.get("load_env_commands", []), recipe_config["commands"])
+        ctx = installer.get_install_context(d, r, login_host)
+        args = installer.InstallConf(project_name, d, r, ctx, config.recipe_envs(d, r),
+                                     config.load_env_script(machine) if machine != "local" else [], config.recipe_script(d, r))
         if machine == "local":
             click_ctx.invoke(install_aux_cmd, args_serialized=util.serialize(args))
         else:
@@ -290,7 +283,7 @@ def log():
 @click.argument("worker_id", required=True, type=int)
 def show_log_worker_cmd(machine, worker_id):
     """
-    Show a log file of worker WORKER_ID on machine MACHINE.
+    Show a log file of worker WORKER_ID on MACHINE.
     """
     with open(settings.worker_log_filepath(machine, worker_id)) as f:
         click.echo_via_pager(f)
@@ -299,7 +292,7 @@ def show_log_worker_cmd(machine, worker_id):
 @click.argument("job_id", required=True, type=int)
 def show_log_job_cmd(machine, job_id):
     """
-    Show a log file of job JOB_ID on machine MACHINE.
+    Show a log file of job JOB_ID on MACHINE.
     """
     with open(settings.job_log_filepath(machine, job_id)) as f:
         click.echo_via_pager(f)
@@ -327,7 +320,7 @@ def path():
 @click.argument("project_name", required=True, type=str)
 def show_path_project_cmd(machine, force, project_name):
     """
-    Show a path to PROJECT_NAME on machine MACHINE.
+    Show a path to PROJECT_NAME on MACHINE.
     """
     project_path = settings.project_git_dirpath(project_name)
     if force or os.path.isdir(project_path):

@@ -1,5 +1,4 @@
 import os
-import yaml
 
 from . import util
 from . import atomic_counter
@@ -13,10 +12,6 @@ def config_filepath():
     else:
         filepath = os.path.join(root_path(), "conf.yaml")
     return os.environ.get("KOCHI_CONF", filepath)
-
-def config():
-    with open(config_filepath(), "r") as f:
-        return yaml.safe_load(f)
 
 # Queues
 # -----------------------------------------------------------------------------
@@ -84,12 +79,6 @@ def project_dep_install_log_filepath(project_name, machine, dep_name, recipe_nam
 def project_dep_install_state_filepath(project_name, machine, dep_name, recipe_name):
     return os.path.join(project_dep_install_dirpath(project_name, machine, dep_name, recipe_name), ".kochi_state.txt")
 
-def project_dep_configs():
-    return config()["dependencies"]
-
-def project_dep_recipe_configs(project_name):
-    return project_dep_configs()[project_name]["recipes"]
-
 # sshd
 # -----------------------------------------------------------------------------
 
@@ -129,11 +118,8 @@ def sshd_client_config_filepath(machine, worker_id):
 def sshd_port():
     return os.environ.get("KOCHI_SSH_PORT", 2022)
 
-# Machine
+# Init
 # -----------------------------------------------------------------------------
-
-def machine_config(machine):
-    return config()["machines"][machine]
 
 def ensure_init():
     os.makedirs(project_dirpath() , exist_ok=True)

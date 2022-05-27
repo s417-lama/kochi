@@ -6,6 +6,7 @@ import contextlib
 
 from . import util
 from . import settings
+from . import config
 from . import project
 
 Context = namedtuple("Context", ["project", "git_remote", "reference", "diff"])
@@ -25,21 +26,21 @@ def create_with_commit_hash(commit_hash, git_remote):
     project_name = project.project_name_of_cwd()
     return Context(project_name, git_remote, commit_hash, None)
 
-def create_with_project_config(recipe_config, git_remote):
-    if recipe_config.get("current_state") and (recipe_config.get("branch") or recipe_config.get("commit_hash")):
-        print("'current_state' cannot coexist with 'branch' or 'commit_hash' in installation config.", file=sys.stderr)
+def create_for_recipe(dep, recipe, git_remote):
+    use_current_state = config.recipe_current_state(dep, recipe)
+    branch = config.recipe_branch(dep, recipe)
+    commit_hash = config.recipe_commit_hash(dep, recipe)
+    if branch and commit_hash:
+        print("'branch' and 'commit_hash' cannot coexist in recipe config.", file=sys.stderr)
         exit(1)
-    if recipe_config.get("branch") and recipe_config.get("commit_hash"):
-        print("'branch' and 'commit_hash' cannot coexist in installation config.", file=sys.stderr)
-        exit(1)
-    if recipe_config.get("current_state"):
+    if use_current_state:
         return create(git_remote)
-    elif recipe_config.get("branch"):
-        return create_with_branch(recipe_config["branch"], git_remote)
-    elif recipe_config.get("commit_hash"):
-        return create_with_commit_hash(recipe_config["commit_hash"], git_remote)
+    elif branch:
+        return create_with_branch(branch, git_remote)
+    elif commit_hash:
+        return create_with_commit_hash(commit_hash, git_remote)
     else:
-        print("Please specify any of 'current_state', 'branch', and 'commit_hash' option in installation config.", file=sys.stderr)
+        print("Please specify any of 'current_state', 'branch', and 'commit_hash' option in recipe config.", file=sys.stderr)
         exit(1)
 
 def deploy(ctx):
