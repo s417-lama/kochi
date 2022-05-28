@@ -31,9 +31,8 @@ def sshd(machine, worker_id):
         with subprocess.Popen([sshd_cmd, "-f", settings.sshd_config_filepath(), "-D",
                                "-o", "PidFile={}/sshd.pid".format(settings.sshd_var_run_dirpath(machine, worker_id)),
                                "-p", str(port)], start_new_session=True) as sshd:
-            ip_address_candidates = subprocess.run(["hostname", "--all-ip-addresses"], stdout=subprocess.PIPE, encoding="utf-8", check=True).stdout.strip().split()
             with open(settings.sshd_client_config_filepath(machine, worker_id), "w") as f:
-                f.write(ssh_client_config(ip_address_candidates, port))
+                f.write(ssh_client_config(util.get_ip_address_candidates(), port))
             try:
                 yield
             finally:

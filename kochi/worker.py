@@ -27,7 +27,7 @@ def worker_loop(idx, queue_name, blocking, machine, stdout):
         if job:
             job_manager.run_job(job, idx, machine, queue_name, stdout)
         elif blocking:
-            time.sleep(0.1) # TODO: monitor filesystem events?
+            time.sleep(0.1)
         else:
             return
 

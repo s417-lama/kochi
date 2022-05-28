@@ -16,6 +16,7 @@ from . import context
 from . import project
 from . import sshd
 from . import installer
+from . import reverse_shell
 
 def ensure_init():
     sshd.ensure_init()
@@ -175,6 +176,64 @@ def enqueue_aux_cmd(machine, job_serialized):
     job = util.deserialize(job_serialized)
     job_enqueued = job_queue.push(job)
     click.secho("Job {} submitted on machine {}.".format(job_enqueued.id, machine), fg="blue")
+
+# interact
+# -----------------------------------------------------------------------------
+
+@cli.command(name="interact")
+@machine_option
+@click.option("-q", "--queue", metavar="QUEUE", required=True, help="Queue to enqueue a job")
+@click.option("-c", "--with-context", is_flag=True, default=False, help="Whether to create context of the current git repository")
+@dependency_option
+@click.option("-g", "--git-remote", help="URL or path to remote git repository. By default, a remote repository is created on the remote machine via ssh.")
+@click.pass_context
+def interact_cmd(click_ctx, machine, queue, with_context, dependency, git_remote):
+    """
+    Enqueues a job to launch an interactive shell on a worker.
+    """
+    if with_context and not util.is_inside_git_dir():
+        raise click.UsageError("--with-context (-c) option must be used inside a git directory.")
+    if with_context and not git_remote:
+        project.sync(machine)
+    ctx = context.create(git_remote) if with_context else None
+    deps = parse_dependencies(dependency)
+    job = job_queue.Job(name="interact", machine=machine, queue=queue, dependencies=deps, context=ctx, commands=None)
+    if machine == "local":
+        click_ctx.invoke(interact_aux_cmd, job_serialized=util.serialize(job))
+    else:
+        run_on_login_node(machine, "kochi interact_aux -m {} {}".format(machine, util.serialize(job)))
+
+@cli.command(name="interact_aux", hidden=True)
+@machine_option
+@click.argument("job_serialized", required=True)
+def interact_aux_cmd(machine, job_serialized):
+    """
+    For internal use only.
+    """
+    job = util.deserialize(job_serialized)
+    def on_listen(host, port, token):
+        commands = []
+        ip_address_candidates = ["127.0.0.1"] if machine == "local" else util.get_ip_address_candidates()
+        for ip in ip_address_candidates:
+            commands.append("timeout 0.1 nc -z {0} {1} &&" \
+                            "echo 'Connecting to {0}:{1} to forward the control of an interactive shell...' &&" \
+                            "kochi launch_reverse_shell {0} {1} {2} &&" \
+                            "echo 'Connection lost.' &&" \
+                            "exit 0".format(ip, port, token))
+        job_interact = job_queue.Job(job.name, job.machine, job.queue, job.dependencies, job.context, "\n".join(commands))
+        job_enqueued = job_queue.push(job_interact)
+        click.secho("Job {} submitted on machine {} (listening on {}:{}).".format(job_enqueued.id, machine, host, port), fg="blue")
+    reverse_shell.wait_to_connect("0.0.0.0", 0, on_listen_hook=on_listen)
+
+@cli.command(name="launch_reverse_shell", hidden=True)
+@click.argument("host", required=True)
+@click.argument("port", type=int, required=True)
+@click.argument("token", required=True)
+def launch_reverse_shell_cmd(host, port, token):
+    """
+    For internal use only.
+    """
+    reverse_shell.launch_shell(host, port, token)
 
 # inspect
 # -----------------------------------------------------------------------------

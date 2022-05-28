@@ -113,3 +113,6 @@ def tailf(filepaths, **opts):
             yield p
         finally:
             p.terminate()
+
+def get_ip_address_candidates():
+    return subprocess.run(["hostname", "--all-ip-addresses"], stdout=subprocess.PIPE, encoding="utf-8", check=True).stdout.strip().split()
