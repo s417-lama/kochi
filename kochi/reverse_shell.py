@@ -1,4 +1,5 @@
 import os
+import sys
 import threading
 import signal
 import tty
@@ -10,36 +11,45 @@ import termios
 import array
 import secrets
 
-def proxy_fd(conn, fd_in, fd_out):
+def proxy_fd(in_fds, out_fds):
     while True:
-        rlist, _wlist, _xlist = select.select([conn, fd_in], [], [])
-        if conn in rlist:
-            try:
-                data = conn.recv(1024)
-            except:
-                data = b""
-            if data:
-                os.write(fd_out, data)
-            else:
-                return
-        if fd_in in rlist:
-            try:
-                data = os.read(fd_in, 1024)
-            except:
-                data = b""
-            if data:
-                conn.sendall(data)
-            else:
-                return
+        rlist, _wlist, _xlist = select.select(in_fds, [], [])
+        for in_fd, out_fd in zip(in_fds, out_fds):
+            if in_fd in rlist:
+                try:
+                    data = os.read(in_fd, 1024)
+                except:
+                    data = b""
+                if data:
+                    while data:
+                        n = os.write(out_fd, data)
+                        data = data[n:]
+                else:
+                    return
+
+def recv_exact(s, n):
+    n_left = n
+    bs = []
+    while n_left > 0:
+        b = s.recv(n_left)
+        if len(b) == 0:
+            raise EOFError
+        n_left -= len(b)
+        bs.append(b)
+    return b"".join(bs)
 
 def accept_with_token(sock, token):
     while True:
         conn, _addr = sock.accept()
-        token_received = conn.recv(1024).decode()
-        if token_received == token:
-            return conn
-        else:
+        try:
+            token_received = recv_exact(conn, len(token.encode())).decode()
+        except:
             conn.close()
+        else:
+            if token_received == token:
+                return conn
+            else:
+                conn.close()
 
 def wait_to_connect(host, port, **opts):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -54,16 +64,22 @@ def wait_to_connect(host, port, **opts):
                 def send_win_size():
                     nonlocal conn2
                     buf = array.array("h", [0] * 4)
-                    fcntl.ioctl(0, termios.TIOCGWINSZ, buf, 1)
+                    fcntl.ioctl(sys.stdin.fileno(), termios.TIOCGWINSZ, buf, 1)
                     conn2.sendall(buf.tobytes())
                 signal.signal(signal.SIGWINCH, lambda signum, frame: send_win_size())
                 send_win_size()
-                mode = tty.tcgetattr(0)
                 try:
-                    tty.setraw(0)
-                    proxy_fd(conn1, 0, 1)
+                    mode = tty.tcgetattr(sys.stdin.fileno())
+                    tty.setraw(sys.stdin.fileno())
+                except:
+                    reset_tty_mode = False
+                else:
+                    reset_tty_mode = True
+                try:
+                    proxy_fd([conn1.fileno(), sys.stdin.fileno()], [sys.stdout.fileno(), conn1.fileno()])
                 finally:
-                    tty.tcsetattr(0, tty.TCSAFLUSH, mode)
+                    if reset_tty_mode:
+                        tty.tcsetattr(sys.stdin.fileno(), tty.TCSAFLUSH, mode)
 
 def launch_shell(host, port, token):
     def watch_window_size(fd):
@@ -73,7 +89,7 @@ def launch_shell(host, port, token):
             while True:
                 buf = array.array("h")
                 try:
-                    data = s.recv(1024)
+                    data = recv_exact(s, len(array.array("h", [0] * 4).tobytes()))
                 except:
                     data = b""
                 if data:
@@ -91,7 +107,7 @@ def launch_shell(host, port, token):
             os.execlp(argv[0], *argv)
         t = threading.Thread(target=watch_window_size, args=(fd,))
         t.start()
-        proxy_fd(s, fd, fd)
+        proxy_fd([s.fileno(), fd], [fd, s.fileno()])
         os.waitpid(pid, 0)
 
 if __name__ == "__main__":
@@ -99,7 +115,6 @@ if __name__ == "__main__":
     terminal1$ python3 -m kochi.reverse_shell client
     terminal2$ python3 -m kochi.reverse_shell server
     """
-    import sys
     host = "localhost"
     port = 8888
     token = "test_token"
