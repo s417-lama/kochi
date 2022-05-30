@@ -264,6 +264,28 @@ def inspect_cmd(machine, on_machine, worker_id):
     else:
         run_on_login_node(machine, "kochi inspect -m {} --on-machine {}".format(machine, worker_id))
 
+# run
+# -----------------------------------------------------------------------------
+
+@cli.command(name="run")
+@machine_option
+@dependency_option
+@click.argument("commands", required=True, nargs=-1, type=click.UNPROCESSED)
+def run_cmd(machine, dependency, commands):
+    """
+    Run COMMANDS here (within this directory) with specified dependencies.
+    Mainly for generating compilation artifacts such as compile_commands.json.
+    """
+    project_name = project.project_name_of_cwd()
+    deps = parse_dependencies(dependency)
+    activate_script = sum([config.recipe_activate_script(d, r) for d, r in deps], [])
+    dep_envs = installer.check_dependencies(project_name, machine, deps)
+    scripts = activate_script + [subprocess.list2cmdline(list(commands))]
+    env = os.environ.copy()
+    env["KOCHI_MACHINE"] = machine
+    env.update(dep_envs)
+    subprocess.run("\n".join(scripts), env=env, shell=True, executable="/bin/bash")
+
 # work
 # -----------------------------------------------------------------------------
 
