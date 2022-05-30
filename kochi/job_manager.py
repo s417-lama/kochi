@@ -33,7 +33,7 @@ class RunningState(enum.IntEnum):
     ABORTED = 4
     KILLED = 5
 
-state_fields = ["running_state", "name", "queue", "worker_id", "context", "dependency_states", "commands", "init_time", "start_time", "latest_time"]
+state_fields = ["running_state", "name", "queue", "worker_id", "context", "dependency_states", "activate_script", "script", "init_time", "start_time", "latest_time"]
 State = namedtuple("State", state_fields)
 
 def update_state(state, **kwargs):
@@ -62,6 +62,7 @@ def on_finish_job(job, worker_id, machine, running_state):
         f.truncate()
 
 def run_job(job, worker_id, machine, queue_name, stdout):
+    dep_envs = installer.check_dependencies(job.context.project, machine, job.dependencies)
     with context.context(job.context):
         with util.tee(settings.job_log_filepath(machine, job.id), stdout=stdout) as tee:
             color = "blue"
@@ -74,11 +75,9 @@ def run_job(job, worker_id, machine, queue_name, stdout):
             env["KOCHI_QUEUE"] = queue_name
             env["KOCHI_JOB_ID"] = str(job.id)
             env["KOCHI_JOB_NAME"] = job.name
-            for dep, recipe in job.dependencies:
-                env["KOCHI_INSTALL_PREFIX_" + dep.upper()] = settings.project_dep_install_dirpath(job.context.project, machine, dep, recipe)
-                env["KOCHI_RECIPE_" + dep.upper()] = recipe
+            env.update(dep_envs)
             try:
-                subprocess.run(job.commands, env=env, shell=not isinstance(job.commands, list), stdout=tee.stdin, stderr=tee.stdin, check=True)
+                subprocess.run("\n".join(job.activate_script + job.script), env=env, shell=True, stdout=tee.stdin, stderr=tee.stdin, check=True)
             except KeyboardInterrupt:
                 print(click.style("Kochi job {} (ID={}) interrupted.".format(job.name, job.id), fg="red"), file=tee.stdin, flush=True)
                 on_finish_job(job, worker_id, machine, RunningState.ABORTED)
@@ -107,7 +106,7 @@ def get_state(machine, job_id):
 def init(job, machine, queue_name):
     with open(settings.job_state_filepath(machine, job.id), "w") as f:
         dependency_states = [installer.get_state(job.context.project, d, r, machine) for d, r in job.dependencies]
-        state = State(RunningState.WAITING, job.name, queue_name, None, job.context, dependency_states, job.commands, current_timestamp(), None, None)
+        state = State(RunningState.WAITING, job.name, queue_name, None, job.context, dependency_states, job.activate_script, job.script, current_timestamp(), None, None)
         f.write(util.serialize(state))
 
 def ensure_init(machine):

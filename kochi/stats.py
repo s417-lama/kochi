@@ -58,7 +58,8 @@ def show_job_detail(machine, job_id):
     table.append(["Context Project", state.context.project if state.context else None])
     table.append(["Context Ref", state.context.reference if state.context else None])
     table.append(["Context Diff", state.context.diff if state.context else None])
-    table.append(["Commands", state.commands])
+    table.append(["Activate Script", "\n".join(state.activate_script)])
+    table.append(["Script", "\n".join(state.script)])
     print(tabulate.tabulate(table))
     for d in state.dependency_states:
         print("\n")

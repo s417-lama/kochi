@@ -168,7 +168,8 @@ def enqueue_cmd(machine, queue, with_context, dependency, name, git_remote, comm
         project.sync(machine)
     ctx = context.create(git_remote) if with_context else None
     deps = parse_dependencies(dependency)
-    job = job_queue.Job(name=name, machine=machine, queue=queue, dependencies=deps, context=ctx, commands=list(commands))
+    activate_script = sum([config.recipe_activate_script(d, r) for d, r in deps], [])
+    job = job_queue.Job(name, machine, queue, deps, ctx, activate_script, [subprocess.list2cmdline(list(commands))])
     if machine == "local":
         job_enqueued = job_queue.push(job)
         click.secho("Job {} submitted on machine {}.".format(job_enqueued.id, machine), fg="blue")
@@ -206,7 +207,8 @@ def interact_cmd(click_ctx, machine, queue, with_context, dependency, git_remote
         project.sync(machine)
     ctx = context.create(git_remote) if with_context else None
     deps = parse_dependencies(dependency)
-    job = job_queue.Job(name="interact", machine=machine, queue=queue, dependencies=deps, context=ctx, commands=None)
+    activate_script = sum([config.recipe_activate_script(d, r) for d, r in deps], [])
+    job = job_queue.Job("interact", machine, queue, deps, ctx, activate_script, None)
     if machine == "local":
         click_ctx.invoke(interact_aux_cmd, job_serialized=util.serialize(job))
     else:
@@ -229,7 +231,7 @@ def interact_aux_cmd(machine, job_serialized):
                             "kochi launch_reverse_shell {0} {1} {2} &&" \
                             "echo 'Connection lost.' &&" \
                             "exit 0".format(ip, port, token))
-        job_interact = job_queue.Job(job.name, job.machine, job.queue, job.dependencies, job.context, "\n".join(commands))
+        job_interact = job_queue.Job(job.name, job.machine, job.queue, job.dependencies, job.context, job.activate_script, commands)
         job_enqueued = job_queue.push(job_interact)
         click.secho("Job {} submitted on machine {} (listening on {}:{}).".format(job_enqueued.id, machine, host, port), fg="blue")
     reverse_shell.wait_to_connect("0.0.0.0", 0, on_listen_hook=on_listen)
@@ -290,9 +292,12 @@ def install_cmd(click_ctx, machine, dependency):
     Install projects that are depended on by this repository on MACHINE.
     """
     project_name = project.project_name_of_cwd()
-    for d, r in parse_dependencies(dependency):
-        ctx = installer.get_install_context(machine, d, r)
-        args = installer.InstallConf(project_name, d, r, ctx, config.recipe_envs(d, r), config.recipe_script(d, r))
+    for dep, recipe in parse_dependencies(dependency):
+        ctx = installer.get_install_context(machine, dep, recipe)
+        recipe_deps = config.recipe_dependencies(dep, recipe, machine)
+        activate_script = sum([config.recipe_activate_script(d, r) for d, r in recipe_deps], [])
+        args = installer.InstallConf(project_name, dep, recipe, recipe_deps, ctx,
+                                     config.recipe_envs(dep, recipe), activate_script, config.recipe_script(dep, recipe))
         if machine == "local":
             click_ctx.invoke(install_aux_cmd, args_serialized=util.serialize(args))
         else:
