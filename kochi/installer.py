@@ -72,7 +72,8 @@ def install(conf, machine):
                 env.update(dep_envs)
                 env.update(conf.envs)
                 try:
-                    subprocess.run("\n".join(conf.activate_script + conf.script), env=env, shell=True, check=True, stdout=tee.stdin, stderr=tee.stdin)
+                    subprocess.run("\n".join(conf.activate_script + conf.script), env=env, shell=True, executable="/bin/bash",
+                                   check=True, stdout=tee.stdin, stderr=tee.stdin)
                 except KeyboardInterrupt:
                     print(click.style("Kochi installation for {}:{} interrupted.".format(conf.dependency, conf.recipe), fg="red"), file=tee.stdin, flush=True)
                 except BaseException as e:

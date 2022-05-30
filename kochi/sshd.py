@@ -49,7 +49,7 @@ def login_to_machine(machine, worker_id):
         print("sshd is not running with worker {} on machine {}.".format(worker_id, machine), file=sys.stderr)
         exit(1)
     try:
-        subprocess.run("ssh -F {} kochi_worker".format(config_path), shell=True, check=True)
+        subprocess.run(["ssh", "-F", config_path, "kochi_worker"], check=True)
     except subprocess.CalledProcessError:
         print("ssh to worker {} on machine {} failed.".format(worker_id, machine), file=sys.stderr)
         exit(1)

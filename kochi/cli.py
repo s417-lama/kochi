@@ -127,7 +127,7 @@ def alloc_aux_cmd(machine, args_serialized):
             KOCHI_WORKER_LAUNCH_CMD=" && ".join(cmds),
         )
         try:
-            subprocess.run(util.decorate_command(args.alloc_script, env=env_dict), shell=True, check=True)
+            subprocess.run(util.decorate_command(args.alloc_script, env=env_dict), shell=True, executable="/bin/bash", check=True)
         except subprocess.CalledProcessError:
             click.secho("Submission of a system job for worker {} failed on machine {}.".format(worker_id, machine), fg="red", file=sys.stderr)
             exit(1)

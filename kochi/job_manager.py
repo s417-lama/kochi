@@ -77,7 +77,8 @@ def run_job(job, worker_id, machine, queue_name, stdout):
             env["KOCHI_JOB_NAME"] = job.name
             env.update(dep_envs)
             try:
-                subprocess.run("\n".join(job.activate_script + job.script), env=env, shell=True, stdout=tee.stdin, stderr=tee.stdin, check=True)
+                subprocess.run("\n".join(job.activate_script + job.script), env=env, shell=True, executable="/bin/bash",
+                               stdout=tee.stdin, stderr=tee.stdin, check=True)
             except KeyboardInterrupt:
                 print(click.style("Kochi job {} (ID={}) interrupted.".format(job.name, job.id), fg="red"), file=tee.stdin, flush=True)
                 on_finish_job(job, worker_id, machine, RunningState.ABORTED)
