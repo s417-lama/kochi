@@ -104,5 +104,5 @@ if __name__ == "__main__":
             ctx = context.create(repo_path)
             job_queue.push(job_queue.Job("test_job_{}".format(i), "local", queue_name, [], ctx, "sleep 0.1; cat {}".format(test_filename)))
     os.remove(test_filename)
-    init("local", queue_name)
-    start(queue_name, False, -1, "local")
+    worker_id = init("local", queue_name, -1)
+    start(queue_name, False, worker_id, "local")

@@ -18,7 +18,10 @@ def push(job):
     return job_enqueued
 
 def pop(machine, queue):
-    job_serialized = locked_queue.pop(settings.queue_filepath(machine, queue))
+    try:
+        job_serialized = locked_queue.pop(settings.queue_filepath(machine, queue))
+    except FileNotFoundError:
+        return None
     if job_serialized:
         return util.deserialize(job_serialized)
     else:

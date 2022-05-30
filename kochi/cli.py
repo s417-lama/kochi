@@ -68,7 +68,8 @@ def on_machine_cmd(group, name):
 @cli.command(name="alloc_interact")
 @machine_option
 @click.option("-n", "--nodes", metavar="NODES_SPEC", default="1", help="Specification of nodes to be allocated on machine MACHINE")
-def alloc_interact_cmd(machine, nodes):
+@click.option("-q", "--queue", metavar="QUEUE", help="Spawns a worker on an allocated node, which works on the specified queue")
+def alloc_interact_cmd(machine, nodes, queue):
     """
     Allocates nodes of NODES_SPEC on MACHINE as an interactive job
     """
@@ -76,13 +77,16 @@ def alloc_interact_cmd(machine, nodes):
         raise click.UsageError("MACHINE cannot be 'local'.")
     env_dict = dict(KOCHI_ALLOC_NODE_SPEC=nodes)
     on_login_node_scripts = config.load_env_login_script(machine) + config.alloc_interact_script(machine)
+    on_compute_node_scripts = config.load_env_machine_script(machine)
+    if queue:
+      on_compute_node_scripts.append("kochi work -m {} -q {} -b".format(machine, queue))
     util.run_command_ssh_expect(config.login_host(machine), on_login_node_scripts,
-                                config.load_env_machine_script(machine), cwd=config.work_dir(machine), env=env_dict)
+                                on_compute_node_scripts, cwd=config.work_dir(machine), env=env_dict)
 
 # alloc
 # -----------------------------------------------------------------------------
 
-AllocArgs = namedtuple("AllocArgs", ["queue", "nodes", "duplicates", "time_limit", "follow", "load_env_script", "alloc_script"])
+AllocArgs = namedtuple("AllocArgs", ["queue", "nodes", "duplicates", "time_limit", "follow", "blocking", "load_env_script", "alloc_script"])
 
 @cli.command(name="alloc")
 @machine_option
@@ -91,13 +95,15 @@ AllocArgs = namedtuple("AllocArgs", ["queue", "nodes", "duplicates", "time_limit
 @click.option("-d", "--duplicates", metavar="DUPLICATES", type=int, default=1, help="Number of workers to be created")
 @click.option("-t", "--time-limit", metavar="TIME_LIMIT", help="Time limit for the system job")
 @click.option("-f", "--follow", is_flag=True, default=False, help="Wait for worker allocation and output log as grows")
-def alloc_cmd(machine, queue, nodes, duplicates, time_limit, follow):
+@click.option("-b", "--blocking", is_flag=True, default=False, help="Block to wait for new job arrival")
+def alloc_cmd(machine, queue, nodes, duplicates, time_limit, follow, blocking):
     """
     Allocates nodes of NODES_SPEC on MACHINE as an interactive job
     """
     if machine == "local":
         raise click.UsageError("MACHINE cannot be 'local'.")
-    args = AllocArgs(queue, nodes, duplicates, time_limit, follow, config.load_env_machine_script(machine), config.alloc_script(machine))
+    args = AllocArgs(queue, nodes, duplicates, time_limit, follow, blocking,
+                     config.load_env_machine_script(machine), config.alloc_script(machine))
     run_on_login_node(machine, "kochi alloc_aux -m {} {}".format(machine, util.serialize(args)))
 
 @cli.command(name="alloc_aux", hidden=True)
@@ -111,7 +117,10 @@ def alloc_aux_cmd(machine, args_serialized):
     worker_ids = []
     for i in range(args.duplicates):
         worker_id = worker.init(machine, args.queue, -1)
-        cmds = args.load_env_script + ["kochi work -m {} -q {} -i {}".format(machine, args.queue, worker_id)]
+        work_cmd = "kochi work -m {} -q {} -i {}".format(machine, args.queue, worker_id)
+        if args.blocking:
+            work_cmd += " -b"
+        cmds = args.load_env_script + [work_cmd]
         env_dict = dict(
             KOCHI_ALLOC_NODE_SPEC=args.nodes,
             KOCHI_ALLOC_TIME_LIMIT=args.time_limit,
