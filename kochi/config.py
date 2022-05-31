@@ -126,11 +126,11 @@ def recipe_commit_hash(d, r):
     return dict_get(recipe(d, r), "commit_hash", default=None) or dict_get(dependency(d), "commit_hash", default=None)
 
 def recipe_dependencies(d, r, machine):
-    deps = dict_get(recipe(d, r), "depends", default=None) or dict_get(dependency(d), "depends", default=dict())
+    deps = dict_get(recipe(d, r), "depends", default=None) or dict_get(dependency(d), "depends", default=[])
     dep_list = []
-    for d, dep_dict in deps.items():
+    for dep_dict in deps:
         if not "machines" in dep_dict or machine in dep_dict["machines"]:
-            dep_list.append((d, dep_dict["recipe"]))
+            dep_list.append((dep_dict["name"], dep_dict["recipe"]))
     return dep_list
 
 def recipe_activate_script(d, r):
