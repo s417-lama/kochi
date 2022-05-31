@@ -3,6 +3,7 @@ import os
 import subprocess
 import sys
 import functools
+import collections
 import click
 
 from . import util
@@ -139,16 +140,30 @@ def alloc_aux_cmd(machine, args_serialized):
 # enqueue
 # -----------------------------------------------------------------------------
 
-dependency_option = click.option("-d", "--dependency", metavar="DEPENDENCY:RECIPE", multiple=True, help="Project dependencies specified in the config")
+dependency_option = click.option("-d", "--dependency", metavar="NAME:RECIPE", multiple=True, help="Project dependencies specified in the config")
 
 def parse_dependencies(deps):
     ret = []
     for d in deps:
         ds = d.split(":")
         if len(ds) != 2:
-            raise click.UsageError("Dependency must be specified as '--dependency (-d) DEPENDENCY:RECIPE'")
+            raise click.UsageError("Dependency must be specified as '--dependency (-d) NAME:RECIPE'")
         ret.append((ds[0], ds[1]))
     return ret
+
+def get_dependencies_recursively_aux(deps, machine, deps_acc):
+    for d, r in reversed(deps):
+        if d in deps_acc and deps_acc[d] != r:
+            print("Dependency conflict: {0}:{1} vs {0}:{2}".format(d, r, deps_acc[d]), file=sys.stderr)
+            exit(1)
+        if not d in deps_acc:
+            deps_acc[d] = r
+            get_dependencies_recursively_aux(config.recipe_dependencies(d, r, machine), machine, deps_acc)
+
+def get_dependencies_recursively(deps, machine):
+    deps_acc = collections.OrderedDict()
+    get_dependencies_recursively_aux(parse_dependencies(deps), machine, deps_acc)
+    return list(reversed(deps_acc.items()))
 
 @cli.command(name="enqueue", context_settings=dict(ignore_unknown_options=True))
 @machine_option
@@ -167,7 +182,7 @@ def enqueue_cmd(machine, queue, with_context, dependency, name, git_remote, comm
     if with_context and not git_remote:
         project.sync(machine)
     ctx = context.create(git_remote) if with_context else None
-    deps = parse_dependencies(dependency)
+    deps = get_dependencies_recursively(dependency, machine)
     activate_script = sum([config.recipe_activate_script(d, r) for d, r in deps], [])
     job = job_queue.Job(name, machine, queue, deps, ctx, activate_script, [subprocess.list2cmdline(list(commands))])
     if machine == "local":
@@ -206,7 +221,7 @@ def interact_cmd(click_ctx, machine, queue, with_context, dependency, git_remote
     if with_context and not git_remote:
         project.sync(machine)
     ctx = context.create(git_remote) if with_context else None
-    deps = parse_dependencies(dependency)
+    deps = get_dependencies_recursively(dependency, machine)
     activate_script = sum([config.recipe_activate_script(d, r) for d, r in deps], [])
     job = job_queue.Job("interact", machine, queue, deps, ctx, activate_script, None)
     if machine == "local":
@@ -277,7 +292,7 @@ def run_cmd(machine, dependency, commands):
     Mainly for generating compilation artifacts such as compile_commands.json.
     """
     project_name = project.project_name_of_cwd()
-    deps = parse_dependencies(dependency)
+    deps = get_dependencies_recursively(dependency, machine)
     activate_script = sum([config.recipe_activate_script(d, r) for d, r in deps], [])
     dep_envs = installer.check_dependencies(project_name, machine, deps)
     scripts = activate_script + [subprocess.list2cmdline(list(commands))]
