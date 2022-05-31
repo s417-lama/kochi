@@ -47,7 +47,7 @@ def deploy(ctx):
     subprocess.run(["git", "fetch", "-q"], check=True)
     subprocess.run(["git", "checkout", "-f", "-q", ctx.reference], check=True)
     subprocess.run(["git", "submodule", "update", "--init", "--recursive", "--quiet"], check=True)
-    subprocess.run(["git", "clean", "-f", "-d", "-q"], check=True)
+    subprocess.run(["git", "clean", "-f", "-d", "-x", "-q"], check=True)
     if ctx.diff:
         subprocess.run(["git", "apply", "--whitespace=nowarn", "-"], input=ctx.diff, encoding="utf-8", check=True)
 
