@@ -8,12 +8,12 @@ from . import config
 def project_name_of_cwd():
     return util.git_repo_name(util.toplevel_git_dirpath())
 
-def get_all_dependencies():
-    deps = []
+def get_all_recipes():
+    recipes = []
     for d in config.dependency_list():
         for r in config.recipe_list(d):
-            deps.append((d, r))
-    return deps
+            recipes.append((d, r))
+    return recipes
 
 def run_on_login_node(machine, script):
     return util.run_command_ssh(config.login_host(machine), config.load_env_login_script(machine) + [script],

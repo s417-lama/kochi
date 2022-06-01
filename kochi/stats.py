@@ -58,6 +58,7 @@ def show_job_detail(machine, job_id):
     table.append(["Context Project", state.context.project if state.context else None])
     table.append(["Context Ref", state.context.reference if state.context else None])
     table.append(["Context Diff", state.context.diff if state.context else None])
+    table.append(["Environment Variables", "\n".join(["{}={}".format(k, v) for k,v in state.envs.items()])])
     table.append(["Activate Script", "\n".join(state.activate_script)])
     table.append(["Script", "\n".join(state.script)])
     print(tabulate.tabulate(table))
@@ -66,9 +67,9 @@ def show_job_detail(machine, job_id):
         print("Dependency {}:{}:".format(d.dependency, d.recipe))
         installer.show_detail(d)
 
-def show_installs(machine, project_name, dependencies):
+def show_installs(machine, project_name, recipes):
     table = []
-    for d, r in dependencies:
+    for d, r in recipes:
         try:
             state = installer.get_state(project_name, d, r, machine)
             installation_state = "installed"

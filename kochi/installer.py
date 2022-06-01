@@ -31,7 +31,7 @@ def get_install_context(machine, dep, recipe):
         return None
 
 def on_complete(conf, machine):
-    recipe_dependency_states = [get_state(conf.project, d, r, machine) for d, r in conf.recipe_dependencies]
+    recipe_dependency_states = [get_state(conf.project, d, r, machine) for d, r in conf.recipe_dependencies.items()]
     commit_hash = subprocess.run(["git", "rev-parse", conf.context.reference], stdout=subprocess.PIPE, encoding="utf-8", check=True).stdout.strip() if conf.context else None
     with open(settings.project_dep_install_state_filepath(conf.project, machine, conf.dependency, conf.recipe), "w") as f:
         state = State(conf.project, conf.dependency, conf.recipe, recipe_dependency_states, conf.context, conf.envs, conf.activate_script, conf.script, time.time(), commit_hash)
@@ -46,7 +46,7 @@ def dep_env(project_name, machine, dep, recipe):
 
 def check_dependencies(project_name, machine, dependencies):
     dep_envs = dict()
-    for d, r in dependencies:
+    for d, r in dependencies.items():
         try:
             state = get_state(project_name, d, r, machine)
             print("Loading dependency {}:{} installed at {}...".format(d, r, datetime.datetime.fromtimestamp(state.installed_time)))
@@ -97,7 +97,7 @@ def show_detail(state):
     table.append(["Context Ref", state.context.reference if state.context else None])
     table.append(["Context Commit Hash", state.commit_hash])
     table.append(["Context Diff", state.context.diff if state.context else None])
-    table.append(["Environments", state.envs])
+    table.append(["Environment Variables", "\n".join(["{}={}".format(k, v) for k,v in state.envs.items()])])
     table.append(["Activate Script", "\n".join(state.activate_script)])
     table.append(["Script", "\n".join(state.script)])
     print(tabulate.tabulate(table))

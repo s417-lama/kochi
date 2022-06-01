@@ -2,8 +2,10 @@ from collections import namedtuple
 import os
 import subprocess
 import sys
+import string
 import functools
 import collections
+import pathlib
 import click
 
 from . import util
@@ -18,6 +20,7 @@ from . import project
 from . import sshd
 from . import installer
 from . import reverse_shell
+from . import job_config
 
 def ensure_init():
     sshd.ensure_init()
@@ -142,52 +145,70 @@ def alloc_aux_cmd(machine, args_serialized):
 
 dependency_option = click.option("-d", "--dependency", metavar="NAME:RECIPE", multiple=True, help="Project dependencies specified in the config")
 
-def parse_dependencies(deps):
-    ret = []
-    for d in deps:
+def parse_dependencies(dep_strs):
+    deps = collections.OrderedDict()
+    for d in dep_strs:
         ds = d.split(":")
         if len(ds) != 2:
             raise click.UsageError("Dependency must be specified as '--dependency (-d) NAME:RECIPE'")
-        ret.append((ds[0], ds[1]))
-    return ret
+        deps[ds[0]] = ds[1]
+    return deps
 
 def get_dependencies_recursively_aux(deps, machine, deps_acc):
-    for d, r in reversed(deps):
+    for d, r in deps.items():
         if d in deps_acc and deps_acc[d] != r:
             print("Dependency conflict: {0}:{1} vs {0}:{2}".format(d, r, deps_acc[d]), file=sys.stderr)
             exit(1)
         if not d in deps_acc:
-            deps_acc[d] = r
             get_dependencies_recursively_aux(config.recipe_dependencies(d, r, machine), machine, deps_acc)
+            deps_acc[d] = r
 
 def get_dependencies_recursively(deps, machine):
     deps_acc = collections.OrderedDict()
-    get_dependencies_recursively_aux(parse_dependencies(deps), machine, deps_acc)
-    return list(reversed(deps_acc.items()))
+    get_dependencies_recursively_aux(deps, machine, deps_acc)
+    return deps_acc
 
 @cli.command(name="enqueue", context_settings=dict(ignore_unknown_options=True))
 @machine_option
-@click.option("-q", "--queue", metavar="QUEUE", required=True, help="Queue to enqueue a job")
+@click.option("-q", "--queue", metavar="QUEUE", help="Queue to enqueue a job")
 @click.option("-c", "--with-context", is_flag=True, default=False, help="Whether to create context of the current git repository")
 @dependency_option
 @click.option("-n", "--name", metavar="JOB_NAME", default="ANON", help="Job name")
 @click.option("-g", "--git-remote", help="URL or path to remote git repository. By default, a remote repository is created on the remote machine via ssh.")
 @click.argument("commands", required=True, nargs=-1, type=click.UNPROCESSED)
-def enqueue_cmd(machine, queue, with_context, dependency, name, git_remote, commands):
+@click.pass_context
+def enqueue_cmd(click_ctx, machine, queue, with_context, dependency, name, git_remote, commands):
     """
     Enqueues a job that runs COMMANDS to QUEUE on MACHINE.
+
+    COMMANDS := <commandline shell script>
+              | job_config.yaml param1=value1 param2=value2 ...
     """
+    if pathlib.Path(commands[0]).suffix in [".yaml", ".yml"]:
+        with_context = True
+        build_script = job_config.build_script(commands[0], machine)
+        run_script = job_config.run_script(commands[0], machine)
+        deps = job_config.default_dependencies(commands[0], machine)
+        deps.update(parse_dependencies(dependency))
+        params = job_manager.parse_params(commands, machine)
+        if not queue:
+            queue = string.Template(job_config.default_queue(commands[0], machine)).substitute(params)
+        envs = job_manager.params2env(params)
+        script = build_script + run_script
+    else:
+        deps = parse_dependencies(dependency)
+        envs = dict()
+        script = [subprocess.list2cmdline(list(commands))]
     if with_context and not util.is_inside_git_dir():
         raise click.UsageError("--with-context (-c) option must be used inside a git directory.")
     if with_context and not git_remote:
         project.sync(machine)
     ctx = context.create(git_remote) if with_context else None
-    deps = get_dependencies_recursively(dependency, machine)
-    activate_script = sum([config.recipe_activate_script(d, r) for d, r in deps], [])
-    job = job_queue.Job(name, machine, queue, deps, ctx, activate_script, [subprocess.list2cmdline(list(commands))])
+    rec_deps = get_dependencies_recursively(deps, machine)
+    activate_script = sum([config.recipe_activate_script(d, r) for d, r in rec_deps.items()], [])
+    job = job_queue.Job(name, machine, queue, rec_deps, ctx, envs, activate_script, script)
     if machine == "local":
-        job_enqueued = job_queue.push(job)
-        click.secho("Job {} submitted on machine {}.".format(job_enqueued.id, machine), fg="blue")
+        click_ctx.invoke(enqueue_aux_cmd, job_serialized=util.serialize(job))
     else:
         run_on_login_node(machine, "kochi enqueue_aux -m {} {}".format(machine, util.serialize(job)))
 
@@ -200,7 +221,7 @@ def enqueue_aux_cmd(machine, job_serialized):
     """
     job = util.deserialize(job_serialized)
     job_enqueued = job_queue.push(job)
-    click.secho("Job {} submitted on machine {}.".format(job_enqueued.id, machine), fg="blue")
+    click.secho("Job {} submitted to queue '{}' on machine '{}'.".format(job_enqueued.id, job.queue, machine), fg="blue")
 
 # interact
 # -----------------------------------------------------------------------------
@@ -221,9 +242,9 @@ def interact_cmd(click_ctx, machine, queue, with_context, dependency, git_remote
     if with_context and not git_remote:
         project.sync(machine)
     ctx = context.create(git_remote) if with_context else None
-    deps = get_dependencies_recursively(dependency, machine)
-    activate_script = sum([config.recipe_activate_script(d, r) for d, r in deps], [])
-    job = job_queue.Job("interact", machine, queue, deps, ctx, activate_script, None)
+    deps = get_dependencies_recursively(parse_dependencies(dependency), machine)
+    activate_script = sum([config.recipe_activate_script(d, r) for d, r in deps.items()], [])
+    job = job_queue.Job("interact", machine, queue, deps, ctx, dict(), activate_script, None)
     if machine == "local":
         click_ctx.invoke(interact_aux_cmd, job_serialized=util.serialize(job))
     else:
@@ -246,7 +267,7 @@ def interact_aux_cmd(machine, job_serialized):
                             "kochi launch_reverse_shell {0} {1} {2} &&" \
                             "echo 'Connection lost.' &&" \
                             "exit 0".format(ip, port, token))
-        job_interact = job_queue.Job(job.name, job.machine, job.queue, job.dependencies, job.context, job.activate_script, commands)
+        job_interact = job_queue.Job(job.name, job.machine, job.queue, job.dependencies, job.context, job.envs, job.activate_script, commands)
         job_enqueued = job_queue.push(job_interact)
         click.secho("Job {} submitted on machine {} (listening on {}:{}).".format(job_enqueued.id, machine, host, port), fg="blue")
     reverse_shell.wait_to_connect("0.0.0.0", 0, on_listen_hook=on_listen)
@@ -292,8 +313,8 @@ def run_cmd(machine, dependency, commands):
     Mainly for generating compilation artifacts such as compile_commands.json.
     """
     project_name = project.project_name_of_cwd()
-    deps = get_dependencies_recursively(dependency, machine)
-    activate_script = sum([config.recipe_activate_script(d, r) for d, r in deps], [])
+    deps = get_dependencies_recursively(parse_dependencies(dependency), machine)
+    activate_script = sum([config.recipe_activate_script(d, r) for d, r in deps.items()], [])
     dep_envs = installer.check_dependencies(project_name, machine, deps)
     scripts = activate_script + [subprocess.list2cmdline(list(commands))]
     env = os.environ.copy()
@@ -329,10 +350,10 @@ def install_cmd(click_ctx, machine, dependency):
     Install projects that are depended on by this repository on MACHINE.
     """
     project_name = project.project_name_of_cwd()
-    for dep, recipe in parse_dependencies(dependency):
+    for dep, recipe in parse_dependencies(dependency).items():
         ctx = installer.get_install_context(machine, dep, recipe)
         recipe_deps = config.recipe_dependencies(dep, recipe, machine)
-        activate_script = sum([config.recipe_activate_script(d, r) for d, r in recipe_deps], [])
+        activate_script = sum([config.recipe_activate_script(d, r) for d, r in recipe_deps.items()], [])
         args = installer.InstallConf(project_name, dep, recipe, recipe_deps, ctx,
                                      config.recipe_envs(dep, recipe), activate_script, config.recipe_script(dep, recipe))
         if machine == "local":
@@ -380,15 +401,15 @@ def show_job_cmd(machine, job_id):
 
 @on_machine_cmd(show, "installs")
 @click.option("--project", hidden=True, callback=lambda _c, _p, v: project.project_name_of_cwd() if not v else v)
-@click.option("--dependencies", hidden=True, callback=lambda _c, _p, v: project.get_all_dependencies() if not v else v)
-def show_installs_cmd(machine, project, dependencies):
-    stats.show_installs(machine, project, dependencies);
+@click.option("--recipes", hidden=True, callback=lambda _c, _p, v: project.get_all_recipes() if not v else v)
+def show_installs_cmd(machine, project, recipes):
+    stats.show_installs(machine, project, recipes);
 
 @on_machine_cmd(show, "install")
 @click.option("--project", hidden=True, callback=lambda _c, _p, v: project.project_name_of_cwd() if not v else v)
 @dependency_option
 def show_install_cmd(machine, project, dependency):
-    for d, r in parse_dependencies(dependency):
+    for d, r in parse_dependencies(dependency).items():
         stats.show_install_detail(machine, project, d, r)
 
 @on_machine_cmd(show, "projects")
@@ -427,7 +448,7 @@ def show_log_install_cmd(machine, project, dependency):
     """
     Show log files of installation of specified dependency recipes.
     """
-    for d, r in parse_dependencies(dependency):
+    for d, r in parse_dependencies(dependency).items():
         with open(settings.project_dep_install_log_filepath(project, machine, d, r)) as f:
             click.echo_via_pager(f)
 

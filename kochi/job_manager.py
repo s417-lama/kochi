@@ -11,6 +11,7 @@ from . import context
 from . import heartbeat
 from . import installer
 from . import atomic_counter
+from . import job_config
 
 class RunningState(enum.IntEnum):
     def __str__(self):
@@ -33,7 +34,7 @@ class RunningState(enum.IntEnum):
     ABORTED = 4
     KILLED = 5
 
-state_fields = ["running_state", "name", "queue", "worker_id", "context", "dependency_states", "activate_script", "script", "init_time", "start_time", "latest_time"]
+state_fields = ["running_state", "name", "queue", "worker_id", "context", "dependency_states", "envs", "activate_script", "script", "init_time", "start_time", "latest_time"]
 State = namedtuple("State", state_fields)
 
 def update_state(state, **kwargs):
@@ -62,7 +63,7 @@ def on_finish_job(job, worker_id, machine, running_state):
         f.truncate()
 
 def run_job(job, worker_id, machine, queue_name, stdout):
-    dep_envs = installer.check_dependencies(job.context.project, machine, job.dependencies)
+    dep_envs = installer.check_dependencies(job.context.project, machine, job.dependencies) if job.context else dict()
     with context.context(job.context):
         with util.tee(settings.job_log_filepath(machine, job.id), stdout=stdout) as tee:
             color = "blue"
@@ -70,12 +71,13 @@ def run_job(job, worker_id, machine, queue_name, stdout):
             print(click.style("-" * 80, fg=color), file=tee.stdin, flush=True)
             on_start_job(job, worker_id, machine)
             env = os.environ.copy()
+            env.update(dep_envs)
+            env.update(job.envs)
             env["KOCHI_MACHINE"] = machine
             env["KOCHI_WORKER_ID"] = str(worker_id)
             env["KOCHI_QUEUE"] = queue_name
             env["KOCHI_JOB_ID"] = str(job.id)
             env["KOCHI_JOB_NAME"] = job.name
-            env.update(dep_envs)
             try:
                 subprocess.run("\n".join(job.activate_script + job.script), env=env, shell=True, executable="/bin/bash",
                                stdout=tee.stdin, stderr=tee.stdin, check=True)
@@ -102,12 +104,27 @@ def get_state(machine, job_id):
         else:
             return state
     except:
-        return State(RunningState.INVALID, None, None, None, None, None, None, None, None, None)
+        return State(RunningState.INVALID, None, None, None, None, None, None, None, None, None, None, None)
+
+def parse_params(commands, machine):
+    params = job_config.default_params(commands[0], machine)
+    for param in commands[1:]:
+        k, v = param.split("=")
+        if not k in params:
+            print("Warning: parameter '{}' is not specified in 'default_params' in job config file {}.".format(k, commands[0]))
+        params[k] = v
+    return params
+
+def params2env(params):
+    env = dict()
+    for k, v in params.items():
+        env["KOCHI_PARAM_" + k.upper().replace("-", "_")] = str(v)
+    return env
 
 def init(job, machine, queue_name):
     with open(settings.job_state_filepath(machine, job.id), "w") as f:
-        dependency_states = [installer.get_state(job.context.project, d, r, machine) for d, r in job.dependencies]
-        state = State(RunningState.WAITING, job.name, queue_name, None, job.context, dependency_states, job.activate_script, job.script, current_timestamp(), None, None)
+        dependency_states = [installer.get_state(job.context.project, d, r, machine) for d, r in job.dependencies.items()]
+        state = State(RunningState.WAITING, job.name, queue_name, None, job.context, dependency_states, job.envs, job.activate_script, job.script, current_timestamp(), None, None)
         f.write(util.serialize(state))
 
 def ensure_init(machine):
