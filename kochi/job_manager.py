@@ -65,7 +65,7 @@ def on_finish_job(job, worker_id, machine, running_state):
         f.truncate()
 
 def run_job(job, worker_id, machine, queue_name, stdout):
-    dep_envs = installer.check_dependencies(job.context.project, machine, job.dependencies) if job.context else dict()
+    dep_envs = installer.deps_env(job.context.project, machine, job.dependencies) if job.context else dict()
     with context.context(job.context):
         with util.tee(settings.job_log_filepath(machine, job.id), stdout=stdout) as tee:
             color = "blue"
@@ -97,7 +97,7 @@ def run_job(job, worker_id, machine, queue_name, stdout):
             print(click.style("-" * 80, fg=color), file=tee.stdin, flush=True)
 
 def invalid_state():
-    return dict(RunningState.INVALID if f == "running_state" else None for f in state_fields)
+    return State(*[RunningState.INVALID if f == "running_state" else None for f in state_fields])
 
 def get_state(machine, job_id):
     try:

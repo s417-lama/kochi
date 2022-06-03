@@ -67,7 +67,7 @@ def show_job_detail(machine, job_id, **opts):
     for d in state.dependency_states:
         print("\n", file=opts.get("stdout", sys.stdout))
         print("Dependency {}:{}:".format(d.dependency, d.recipe), file=opts.get("stdout", sys.stdout))
-        installer.show_detail(d, **opts)
+        installer.show_detail(d, recurse=False, **opts)
 
 def show_installs(machine, project_name, recipes, **opts):
     table = []
@@ -82,9 +82,9 @@ def show_installs(machine, project_name, recipes, **opts):
         table.append([d, r, installation_state, installed_time])
     print(tabulate.tabulate(table, headers=["Dependency", "Recipe", "State", "Installed Time"]), file=opts.get("stdout", sys.stdout))
 
-def show_install_detail(machine, project_name, dependency, recipe, *opts):
+def show_install_detail(machine, project_name, dependency, recipe, **opts):
     state = installer.get_state(project_name, dependency, recipe, machine)
-    installer.show_detail(state, **opts)
+    installer.show_detail(state, recurse=True, **opts)
 
 def show_projects(**opts):
     projects = sorted(os.listdir(settings.project_dirpath()))

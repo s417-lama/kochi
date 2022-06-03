@@ -6,11 +6,14 @@ from . import settings
 from . import job_manager
 from . import locked_queue
 from . import atomic_counter
+from . import installer
 
 Job = namedtuple("Job", ["name", "machine", "queue", "dependencies", "context", "params", "artifacts_conf", "activate_script", "script"])
 JobEnqueued = namedtuple("JobEnqueued", ["id", "name", "dependencies", "context", "params", "artifacts_conf", "activate_script", "script"])
 
 def push(job):
+    if job.context:
+        installer.check_dependencies(job.context.project, job.machine, job.dependencies)
     idx = atomic_counter.fetch_and_add(settings.job_counter_filepath(job.machine), 1)
     job_enqueued = JobEnqueued(idx, job.name, job.dependencies, job.context, job.params, job.artifacts_conf, job.activate_script, job.script)
     job_manager.init(job_enqueued, job.machine, job.queue)

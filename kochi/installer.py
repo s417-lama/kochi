@@ -44,20 +44,40 @@ def dep_env(project_name, machine, dep, recipe):
     env["KOCHI_RECIPE_" + dep_upper_name] = recipe
     return env
 
-def check_dependencies(project_name, machine, dependencies):
+def deps_env(project_name, machine, dependencies):
     dep_envs = dict()
     for d, r in dependencies.items():
-        try:
-            state = get_state(project_name, d, r, machine)
-            print("Loading dependency {}:{} installed at {}...".format(d, r, datetime.datetime.fromtimestamp(state.installed_time)))
-            dep_envs.update(dep_env(project_name, machine, d, r))
-        except:
-            print("Dependency {}:{} is not installed. Please install it beforehand.".format(d, r), file=sys.stderr)
-            exit(1)
+        dep_envs.update(dep_env(project_name, machine, d, r))
     return dep_envs
 
+def check_dependencies_aux(project_name, machine, current_dep_states, installed_dep_state):
+    for ds in installed_dep_state.recipe_dependency_states:
+        current_state = current_dep_states[ds.dependency]
+        if current_state.installed_time != ds.installed_time:
+            raise Exception(util.dedent("""
+                Installation version mismatch for {0}:{1}.
+                The current version of recipe {0}:{1} was installed at {2}, but {3}:{4} was installed using a version installed at {5}.
+                """.format(ds.dependency, ds.recipe, datetime.datetime.fromtimestamp(current_state.installed_time),
+                           installed_dep_state.dependency, installed_dep_state.recipe, datetime.datetime.fromtimestamp(ds.installed_time))))
+        check_dependencies_aux(project_name, machine, current_dep_states, ds)
+
+def check_dependencies(project_name, machine, deps):
+    """
+    Checks inconsistency of installation states.
+
+    - Suppose that project A depends on project B
+    - When A is installed, the installation state of B is recorded to A's state
+    - If B is reinstalled, A needs to be reinstalled too
+    - Such inconsistency is checked here by comparing B's current state and that recoreded in A's state
+    """
+    current_dep_states = {d: get_state(project_name, d, r, machine) for d, r in deps.items()}
+    for d, ds in current_dep_states.items():
+        print("Checking dependencies for {}:{}...".format(d, ds.recipe))
+        check_dependencies_aux(project_name, machine, current_dep_states, ds)
+
 def install(conf, machine):
-    dep_envs = check_dependencies(conf.project, machine, conf.recipe_dependencies)
+    check_dependencies(conf.project, machine, conf.recipe_dependencies)
+    dep_envs = deps_env(conf.project, machine, conf.recipe_dependencies)
     prefix = settings.project_dep_install_dirpath(conf.project, machine, conf.dependency, conf.recipe)
     os.makedirs(prefix, exist_ok=True)
     with util.tmpdir(settings.project_dep_install_tmp_dirpath(conf.project, machine, conf.dependency, conf.recipe)):
@@ -89,7 +109,7 @@ def get_state(project_name, dependency, recipe, machine):
     except:
         raise Exception("Something went wrong with installation for dependency {}:{}. Try installing again.".format(dependency, recipe))
 
-def show_detail(state, **opts):
+def show_detail(state, indent=0, **opts):
     table = []
     table.append(["Dependency Name", state.dependency])
     table.append(["Recipe Name", state.recipe])
@@ -100,8 +120,10 @@ def show_detail(state, **opts):
     table.append(["Environment Variables", "\n".join(["{}={}".format(k, v) for k,v in state.envs.items()])])
     table.append(["Activate Script", "\n".join(state.activate_script)])
     table.append(["Script", "\n".join(state.script)])
-    print(tabulate.tabulate(table), file=opts.get("stdout", sys.stdout))
-    for d in state.recipe_dependency_states:
-        print("\n", file=opts.get("stdout", sys.stdout))
-        print("Dependency {}:{}:".format(d.dependency, d.recipe), file=opts.get("stdout", sys.stdout))
-        show_detail(d, **opts)
+    print(util.dedent(tabulate.tabulate(table), indent=indent), file=opts.get("stdout", sys.stdout))
+    if opts.get("recurse", False):
+        indent += 2
+        for d in state.recipe_dependency_states:
+            print("\n", file=opts.get("stdout", sys.stdout))
+            print(util.dedent("Dependency {}:{}:".format(d.dependency, d.recipe), indent=indent), file=opts.get("stdout", sys.stdout))
+            show_detail(d, indent, **opts)

@@ -417,8 +417,9 @@ def install_cmd(click_ctx, machine, dependency):
     for dep, recipe in parse_dependencies(dependency).items():
         ctx = installer.get_install_context(machine, dep, recipe)
         recipe_deps = config.recipe_dependencies(dep, recipe, machine)
-        activate_script = sum([config.recipe_activate_script(d, r) for d, r in recipe_deps.items()], [])
-        args = installer.InstallConf(project_name, dep, recipe, recipe_deps, ctx,
+        rec_deps = get_dependencies_recursively(recipe_deps, machine)
+        activate_script = sum([config.recipe_activate_script(d, r) for d, r in rec_deps.items()], [])
+        args = installer.InstallConf(project_name, dep, recipe, rec_deps, ctx,
                                      config.recipe_envs(dep, recipe), activate_script, config.recipe_script(dep, recipe))
         if machine == "local":
             click_ctx.invoke(install_aux_cmd, args_serialized=util.serialize(args))
