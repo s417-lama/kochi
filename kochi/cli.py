@@ -4,6 +4,7 @@ import subprocess
 import sys
 import string
 import functools
+import itertools
 import collections
 import pathlib
 import click
@@ -21,6 +22,7 @@ from . import sshd
 from . import installer
 from . import reverse_shell
 from . import job_config
+from . import artifact
 
 def ensure_init():
     sshd.ensure_init()
@@ -173,7 +175,7 @@ def get_dependencies_recursively(deps, machine):
 @click.option("-q", "--queue", metavar="QUEUE", help="Queue to enqueue a job")
 @click.option("-c", "--with-context", is_flag=True, default=False, help="Whether to create context of the current git repository")
 @dependency_option
-@click.option("-n", "--name", metavar="JOB_NAME", default="ANON", help="Job name")
+@click.option("-n", "--name", metavar="JOB_NAME", help="Job name")
 @click.option("-g", "--git-remote", help="URL or path to remote git repository. By default, a remote repository is created on the remote machine via ssh.")
 @click.argument("commands", required=True, nargs=-1, type=click.UNPROCESSED)
 @click.pass_context
@@ -191,22 +193,31 @@ def enqueue_cmd(click_ctx, machine, queue, with_context, dependency, name, git_r
         deps = job_config.default_dependencies(commands[0], machine)
         deps.update(parse_dependencies(dependency))
         params = job_manager.parse_params(commands, machine)
+        if not name:
+            name = string.Template(job_config.default_name(commands[0], machine)).substitute(params)
         if not queue:
             queue = string.Template(job_config.default_queue(commands[0], machine)).substitute(params)
-        envs = job_manager.params2env(params)
         script = build_script + run_script
     else:
         deps = parse_dependencies(dependency)
-        envs = dict()
+        params = dict()
         script = [subprocess.list2cmdline(list(commands))]
+
+    if not name:
+        name = "ANON"
+    if not queue:
+        raise click.UsageError("Please specify --queue (-q) option.")
+
     if with_context and not util.is_inside_git_dir():
         raise click.UsageError("--with-context (-c) option must be used inside a git directory.")
     if with_context and not git_remote:
         project.sync(machine)
     ctx = context.create(git_remote) if with_context else None
+
     rec_deps = get_dependencies_recursively(deps, machine)
     activate_script = sum([config.recipe_activate_script(d, r) for d, r in rec_deps.items()], [])
-    job = job_queue.Job(name, machine, queue, rec_deps, ctx, envs, activate_script, script)
+
+    job = job_queue.Job(name, machine, queue, rec_deps, ctx, params, [], activate_script, script)
     if machine == "local":
         click_ctx.invoke(enqueue_aux_cmd, job_serialized=util.serialize(job))
     else:
@@ -244,7 +255,7 @@ def interact_cmd(click_ctx, machine, queue, with_context, dependency, git_remote
     ctx = context.create(git_remote) if with_context else None
     deps = get_dependencies_recursively(parse_dependencies(dependency), machine)
     activate_script = sum([config.recipe_activate_script(d, r) for d, r in deps.items()], [])
-    job = job_queue.Job("interact", machine, queue, deps, ctx, dict(), activate_script, None)
+    job = job_queue.Job("interact", machine, queue, deps, ctx, dict(), [], activate_script, None)
     if machine == "local":
         click_ctx.invoke(interact_aux_cmd, job_serialized=util.serialize(job))
     else:
@@ -267,7 +278,7 @@ def interact_aux_cmd(machine, job_serialized):
                             "kochi launch_reverse_shell {0} {1} {2} &&" \
                             "echo 'Connection lost.' &&" \
                             "exit 0".format(ip, port, token))
-        job_interact = job_queue.Job(job.name, job.machine, job.queue, job.dependencies, job.context, job.envs, job.activate_script, commands)
+        job_interact = job_queue.Job(job.name, job.machine, job.queue, job.dependencies, job.context, job.params, job.artifacts_conf, job.activate_script, commands)
         job_enqueued = job_queue.push(job_interact)
         click.secho("Job {} submitted on machine {} (listening on {}:{}).".format(job_enqueued.id, machine, host, port), fg="blue")
     reverse_shell.wait_to_connect("0.0.0.0", 0, on_listen_hook=on_listen)
@@ -281,6 +292,59 @@ def launch_reverse_shell_cmd(host, port, token):
     For internal use only.
     """
     reverse_shell.launch_shell(host, port, token)
+
+# batch
+# -----------------------------------------------------------------------------
+
+def param_product(params):
+    param_pairs = []
+    for k, vl in params.items():
+        if isinstance(vl, list):
+            param_pairs.append([(k, v) for v in vl])
+        else:
+            param_pairs.append([(k, vl)])
+    return [dict(d) for d in itertools.product(*param_pairs)]
+
+@cli.command(name="batch")
+@machine_option
+@click.argument("job_config_file", required=True)
+@click.argument("batch_name", required=True)
+@click.option("-g", "--git-remote", help="URL or path to remote git repository. By default, a remote repository is created on the remote machine via ssh.")
+@click.pass_context
+def batch_cmd(click_ctx, machine, job_config_file, batch_name, git_remote):
+    """
+    Enqueues jobs specified as BATCH_NAME in JOB_CONFIG_FILE on MACHINE.
+    """
+    build_script = job_config.batch_build_script(job_config_file, batch_name, machine)
+    run_script = job_config.batch_run_script(job_config_file, batch_name, machine)
+    script = build_script + run_script
+
+    job_name_template = string.Template(job_config.batch_job_name(job_config_file, batch_name, machine))
+    queue_name_template = string.Template(job_config.batch_queue(job_config_file, batch_name, machine))
+    params = job_config.batch_params(job_config_file, batch_name, machine)
+    params.update(batch_name=batch_name)
+    artifacts_conf = job_config.batch_artifacts(job_config_file, batch_name, machine)
+
+    deps = job_config.batch_dependencies(job_config_file, batch_name, machine)
+    rec_deps = get_dependencies_recursively(deps, machine)
+    activate_script = sum([config.recipe_activate_script(d, r) for d, r in rec_deps.items()], [])
+
+    artifact.ensure_init_machine(machine)
+
+    if not util.is_inside_git_dir():
+        raise click.UsageError("--with-context (-c) option must be used inside a git directory.")
+    if not git_remote:
+        project.sync(machine)
+    ctx = context.create(git_remote)
+
+    for p in param_product(params):
+        queue = queue_name_template.substitute(p)
+        job_name = job_name_template.substitute(p)
+        job = job_queue.Job(job_name, machine, queue, rec_deps, ctx, p, artifacts_conf, activate_script, script)
+        if machine == "local":
+            click_ctx.invoke(enqueue_aux_cmd, job_serialized=util.serialize(job))
+        else:
+            run_on_login_node(machine, "kochi enqueue_aux -m {} {}".format(machine, util.serialize(job)))
 
 # inspect
 # -----------------------------------------------------------------------------
@@ -369,6 +433,29 @@ def install_aux_cmd(machine, args_serialized):
     For internal use only.
     """
     installer.install(util.deserialize(args_serialized), machine)
+
+# artifact
+# -----------------------------------------------------------------------------
+
+@cli.group(name="artifact")
+def artifact_group():
+    pass
+
+@artifact_group.command(name="init")
+@click.argument("git_worktree_path", required=True)
+def artifact_init_cmd(git_worktree_path):
+    """
+    Creates a git worktree at GIT_WORKTREE_PATH that operates on kochi's artifacts branch.
+    """
+    artifact.init(git_worktree_path)
+
+@artifact_group.command(name="sync")
+@machine_option
+def artifact_sync_cmd(machine):
+    """
+    Gets (pulls) job artifacts from MACHINE and saves them in the artifact worktree.
+    """
+    artifact.sync(machine)
 
 # show
 # -----------------------------------------------------------------------------
@@ -461,12 +548,13 @@ def path():
 
 @on_machine_cmd(path, "project")
 @click.option("-f", "--force", is_flag=True, default=False, help="Force to show the project path even if the project does not exist")
+@click.option("--is-artifact", is_flag=True, default=False, help="Get an artifact git path")
 @click.argument("project_name", required=True, type=str)
-def show_path_project_cmd(machine, force, project_name):
+def show_path_project_cmd(machine, force, project_name, is_artifact):
     """
     Show a path to PROJECT_NAME on MACHINE.
     """
-    project_path = settings.project_git_dirpath(project_name)
+    project_path = settings.project_artifact_git_dirpath(project_name) if is_artifact else settings.project_git_dirpath(project_name)
     if force or os.path.isdir(project_path):
         print(project_path)
     else:

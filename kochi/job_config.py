@@ -35,16 +35,21 @@ def wrap_list(s):
 # Defaults
 # -----------------------------------------------------------------------------
 
+def default_name(path, machine):
+    return dict_get(root_config(path), "default_name", default=None)
+
 def default_queue(path, machine):
     return dict_get(root_config(path), "default_queue", default=None)
 
-def default_dependencies(path, machine):
-    dep_conf = dict_get(root_config(path), "depends", default=[])
+def parse_dependencies(dep_conf, machine):
     deps = collections.OrderedDict()
     for dep_dict in dep_conf:
         if not "machines" in dep_dict or machine in dep_dict["machines"]:
             deps[dep_dict["name"]] = dep_dict["recipe"]
     return deps
+
+def default_dependencies(path, machine):
+    return parse_dependencies(dict_get(root_config(path), "depends", default=[]), machine)
 
 # Parameters
 # -----------------------------------------------------------------------------
@@ -90,3 +95,43 @@ def run(path):
 
 def run_script(path, machine):
     return wrap_list(dict_get(run(path), "script"))
+
+# Batches
+# -----------------------------------------------------------------------------
+
+def batches(path):
+    return dict_get(root_config(path), "batches")
+
+def batch(path, batch_name):
+    return dict_get(batches(path), batch_name)
+
+def batch_job_name(path, batch_name, machine):
+    return dict_get(batch(path, batch_name), "name", default=None) or default_name(path, machine)
+
+def batch_queue(path, batch_name, machine):
+    return dict_get(batch(path, batch_name), "queue", default=None) or default_queue(path, machine)
+
+def batch_params(path, batch_name, machine):
+    params = default_params(path, machine)
+    params.update(parse_params(dict_get(batch(path, batch_name), "params", default=dict()), machine))
+    return params
+
+def batch_dependencies(path, batch_name, machine):
+    deps = default_dependencies(path, machine)
+    deps.update(parse_dependencies(dict_get(batch(path, batch_name), "depends", default=dict()), machine))
+    return deps
+
+def batch_build(path, batch_name):
+    return dict_get(batch(path, batch_name), "build", default=dict())
+
+def batch_build_script(path, batch_name, machine):
+    return dict_get(batch_build(path, batch_name), "script", default=None) or build_script(path, machine)
+
+def batch_run(path, batch_name):
+    return dict_get(batch(path, batch_name), "run", default=dict())
+
+def batch_run_script(path, batch_name, machine):
+    return dict_get(batch_run(path, batch_name), "script", default=None) or run_script(path, machine)
+
+def batch_artifacts(path, batch_name, machine):
+    return dict_get(batch(path, batch_name), "artifacts", default=[])

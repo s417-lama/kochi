@@ -12,6 +12,7 @@ from . import heartbeat
 from . import installer
 from . import atomic_counter
 from . import job_config
+from . import artifact
 
 class RunningState(enum.IntEnum):
     def __str__(self):
@@ -34,7 +35,8 @@ class RunningState(enum.IntEnum):
     ABORTED = 4
     KILLED = 5
 
-state_fields = ["running_state", "name", "queue", "worker_id", "context", "dependency_states", "envs", "activate_script", "script", "init_time", "start_time", "latest_time"]
+state_fields = ["running_state", "name", "queue", "worker_id", "context", "dependency_states", "params", "envs",
+                "artifacts_conf", "activate_script", "script", "init_time", "start_time", "latest_time"]
 State = namedtuple("State", state_fields)
 
 def update_state(state, **kwargs):
@@ -46,10 +48,10 @@ def update_state(state, **kwargs):
 def current_timestamp():
     return int(time.time())
 
-def on_start_job(job, worker_id, machine):
+def on_start_job(job, worker_id, machine, envs):
     with open(settings.job_state_filepath(machine, job.id), "r+") as f:
         state = util.deserialize(f.read())
-        next_state = update_state(state, running_state=RunningState.RUNNING, worker_id=worker_id, start_time=current_timestamp())
+        next_state = update_state(state, running_state=RunningState.RUNNING, worker_id=worker_id, start_time=current_timestamp(), envs=envs)
         f.seek(0)
         f.write(util.serialize(next_state))
         f.truncate()
@@ -69,18 +71,21 @@ def run_job(job, worker_id, machine, queue_name, stdout):
             color = "blue"
             print(click.style("Kochi job {} (ID={}) started.".format(job.name, job.id), fg=color), file=tee.stdin, flush=True)
             print(click.style("-" * 80, fg=color), file=tee.stdin, flush=True)
-            on_start_job(job, worker_id, machine)
             env = os.environ.copy()
             env.update(dep_envs)
-            env.update(job.envs)
+            env.update(params2env(job.params))
             env["KOCHI_MACHINE"] = machine
             env["KOCHI_WORKER_ID"] = str(worker_id)
             env["KOCHI_QUEUE"] = queue_name
             env["KOCHI_JOB_ID"] = str(job.id)
             env["KOCHI_JOB_NAME"] = job.name
+            on_start_job(job, worker_id, machine, env)
             try:
                 subprocess.run("\n".join(job.activate_script + job.script), env=env, shell=True, executable="/bin/bash",
                                stdout=tee.stdin, stderr=tee.stdin, check=True)
+                if job.context and len(job.artifacts_conf) > 0:
+                    print(click.style("Saving artifacts...", fg=color), file=tee.stdin, flush=True)
+                    artifact.save(machine, worker_id, job)
             except KeyboardInterrupt:
                 print(click.style("Kochi job {} (ID={}) interrupted.".format(job.name, job.id), fg="red"), file=tee.stdin, flush=True)
                 on_finish_job(job, worker_id, machine, RunningState.ABORTED)
@@ -90,6 +95,9 @@ def run_job(job, worker_id, machine, queue_name, stdout):
             else:
                 on_finish_job(job, worker_id, machine, RunningState.TERMINATED)
             print(click.style("-" * 80, fg=color), file=tee.stdin, flush=True)
+
+def invalid_state():
+    return dict(RunningState.INVALID if f == "running_state" else None for f in state_fields)
 
 def get_state(machine, job_id):
     try:
@@ -104,7 +112,7 @@ def get_state(machine, job_id):
         else:
             return state
     except:
-        return State(RunningState.INVALID, None, None, None, None, None, None, None, None, None, None, None)
+        return invalid_state()
 
 def parse_params(commands, machine):
     params = job_config.default_params(commands[0], machine)
@@ -124,7 +132,8 @@ def params2env(params):
 def init(job, machine, queue_name):
     with open(settings.job_state_filepath(machine, job.id), "w") as f:
         dependency_states = [installer.get_state(job.context.project, d, r, machine) for d, r in job.dependencies.items()]
-        state = State(RunningState.WAITING, job.name, queue_name, None, job.context, dependency_states, job.envs, job.activate_script, job.script, current_timestamp(), None, None)
+        state = State(RunningState.WAITING, job.name, queue_name, None, job.context, dependency_states, job.params, None,
+                      job.artifacts_conf, job.activate_script, job.script, current_timestamp(), None, None)
         f.write(util.serialize(state))
 
 def ensure_init(machine):

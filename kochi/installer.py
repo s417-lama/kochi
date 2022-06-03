@@ -89,7 +89,7 @@ def get_state(project_name, dependency, recipe, machine):
     except:
         raise Exception("Something went wrong with installation for dependency {}:{}. Try installing again.".format(dependency, recipe))
 
-def show_detail(state):
+def show_detail(state, **opts):
     table = []
     table.append(["Dependency Name", state.dependency])
     table.append(["Recipe Name", state.recipe])
@@ -100,8 +100,8 @@ def show_detail(state):
     table.append(["Environment Variables", "\n".join(["{}={}".format(k, v) for k,v in state.envs.items()])])
     table.append(["Activate Script", "\n".join(state.activate_script)])
     table.append(["Script", "\n".join(state.script)])
-    print(tabulate.tabulate(table))
+    print(tabulate.tabulate(table), file=opts.get("stdout", sys.stdout))
     for d in state.recipe_dependency_states:
-        print("\n")
-        print("Dependency {}:{}:".format(d.dependency, d.recipe))
-        show_detail(d)
+        print("\n", file=opts.get("stdout", sys.stdout))
+        print("Dependency {}:{}:".format(d.dependency, d.recipe), file=opts.get("stdout", sys.stdout))
+        show_detail(d, **opts)

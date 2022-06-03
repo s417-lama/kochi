@@ -42,7 +42,7 @@ def cwd(path):
     cwd_orig = os.getcwd()
     os.chdir(path)
     try:
-        yield
+        yield cwd_orig
     finally:
         os.chdir(cwd_orig)
 
@@ -50,8 +50,8 @@ def cwd(path):
 def tmpdir(path):
     os.makedirs(path)
     try:
-        with cwd(path):
-            yield
+        with cwd(path) as old_cwd:
+            yield old_cwd
     finally:
         shutil.rmtree(path)
 
@@ -116,3 +116,6 @@ def tailf(filepaths, **opts):
 
 def get_ip_address_candidates():
     return subprocess.run(["hostname", "--all-ip-addresses"], stdout=subprocess.PIPE, encoding="utf-8", check=True).stdout.strip().split()
+
+def ensure_dir_exists(filepath):
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)

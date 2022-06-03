@@ -66,6 +66,9 @@ def project_dirpath():
 def project_git_dirpath(project_name):
     return os.path.join(project_dirpath(), project_name, "git")
 
+def project_artifact_git_dirpath(project_name):
+    return os.path.join(project_dirpath(), project_name, "artifact_git")
+
 def project_dep_install_dirpath(project_name, machine, dep_name, recipe_name):
     return os.path.join(project_dirpath(), project_name, "install", machine, dep_name, recipe_name)
 
@@ -116,3 +119,18 @@ def sshd_client_config_filepath(machine, worker_id):
 
 def sshd_port():
     return os.environ.get("KOCHI_SSH_PORT", 2022)
+
+# artifacts
+# -----------------------------------------------------------------------------
+
+def artifacts_dirname(machine, project_name):
+    return "{}_artifacts_{}".format(project_name, machine)
+
+def artifacts_master_branch():
+    return "kochi_artifacts"
+
+def artifacts_branch(machine):
+    return "kochi_artifacts_{}".format(machine)
+
+def artifacts_dirpath(machine, project_name, worker_id):
+    return os.path.join(worker_workspace_dirpath(machine, worker_id), artifacts_dirname(machine, project_name))

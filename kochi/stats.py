@@ -1,4 +1,5 @@
 import os
+import sys
 import datetime
 import tabulate
 
@@ -8,12 +9,12 @@ from . import worker
 from . import job_manager
 from . import installer
 
-def show_queues(machine):
+def show_queues(machine, **opts):
     queues = sorted(os.listdir(settings.queue_dirpath(machine)))
     for q in queues:
-        print(q)
+        print(q, file=opts.get("stdout", sys.stdout))
 
-def show_workers(machine, show_all, queues):
+def show_workers(machine, show_all, queues, **opts):
     max_workers = atomic_counter.fetch(settings.worker_counter_filepath(machine))
     table = []
     for idx in range(max_workers):
@@ -25,9 +26,9 @@ def show_workers(machine, show_all, queues):
             latest_dt = datetime.datetime.fromtimestamp(state.latest_time) if state.latest_time else None
             table.append([idx, str(state.running_state), state.queue, init_dt, start_dt,
                           latest_dt - start_dt if start_dt and latest_dt else None])
-    print(tabulate.tabulate(table, headers=["ID", "State", "Queue", "Created Time", "Start Time", "Running Time"]))
+    print(tabulate.tabulate(table, headers=["ID", "State", "Queue", "Created Time", "Start Time", "Running Time"]), file=opts.get("stdout", sys.stdout))
 
-def show_jobs(machine, show_all, queues, names):
+def show_jobs(machine, show_all, queues, names, **opts):
     max_jobs = atomic_counter.fetch(settings.job_counter_filepath(machine))
     table = []
     for idx in range(max_jobs):
@@ -40,9 +41,9 @@ def show_jobs(machine, show_all, queues, names):
             latest_dt = datetime.datetime.fromtimestamp(state.latest_time) if state.latest_time else None
             table.append([idx, state.name, str(state.running_state), state.queue, state.worker_id, init_dt, start_dt,
                           latest_dt - start_dt if start_dt and latest_dt else None])
-    print(tabulate.tabulate(table, headers=["ID", "Name", "State", "Queue", "Worker ID", "Created Time", "Start Time", "Running Time"]))
+    print(tabulate.tabulate(table, headers=["ID", "Name", "State", "Queue", "Worker ID", "Created Time", "Start Time", "Running Time"]), file=opts.get("stdout", sys.stdout))
 
-def show_job_detail(machine, job_id):
+def show_job_detail(machine, job_id, **opts):
     state = job_manager.get_state(machine, job_id)
     table = []
     table.append(["Job ID", job_id])
@@ -58,16 +59,17 @@ def show_job_detail(machine, job_id):
     table.append(["Context Project", state.context.project if state.context else None])
     table.append(["Context Ref", state.context.reference if state.context else None])
     table.append(["Context Diff", state.context.diff if state.context else None])
+    table.append(["Parameters", "\n".join(["{}={}".format(k, v) for k,v in state.params.items()])])
     table.append(["Environment Variables", "\n".join(["{}={}".format(k, v) for k,v in state.envs.items()])])
     table.append(["Activate Script", "\n".join(state.activate_script)])
     table.append(["Script", "\n".join(state.script)])
-    print(tabulate.tabulate(table))
+    print(tabulate.tabulate(table), file=opts.get("stdout", sys.stdout))
     for d in state.dependency_states:
-        print("\n")
-        print("Dependency {}:{}:".format(d.dependency, d.recipe))
-        installer.show_detail(d)
+        print("\n", file=opts.get("stdout", sys.stdout))
+        print("Dependency {}:{}:".format(d.dependency, d.recipe), file=opts.get("stdout", sys.stdout))
+        installer.show_detail(d, **opts)
 
-def show_installs(machine, project_name, recipes):
+def show_installs(machine, project_name, recipes, **opts):
     table = []
     for d, r in recipes:
         try:
@@ -78,14 +80,14 @@ def show_installs(machine, project_name, recipes):
             installation_state = "NOT installed"
             installed_time = None
         table.append([d, r, installation_state, installed_time])
-    print(tabulate.tabulate(table, headers=["Dependency", "Recipe", "State", "Installed Time"]))
+    print(tabulate.tabulate(table, headers=["Dependency", "Recipe", "State", "Installed Time"]), file=opts.get("stdout", sys.stdout))
 
-def show_install_detail(machine, project_name, dependency, recipe):
+def show_install_detail(machine, project_name, dependency, recipe, *opts):
     state = installer.get_state(project_name, dependency, recipe, machine)
-    installer.show_detail(state)
+    installer.show_detail(state, **opts)
 
-def show_projects():
+def show_projects(**opts):
     projects = sorted(os.listdir(settings.project_dirpath()))
     for p in projects:
-        print(p)
+        print(p, file=opts.get("stdout", sys.stdout))
 
