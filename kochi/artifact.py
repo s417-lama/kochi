@@ -3,7 +3,6 @@ import subprocess
 import shutil
 import time
 import string
-import pathlib
 
 from . import util
 from . import settings
@@ -109,3 +108,16 @@ def sync(machine):
         finally:
             subprocess.run(["git", "checkout", "-q", settings.artifacts_master_branch()], check=True)
         subprocess.run(["git", "merge", "--no-edit", settings.artifacts_branch(machine)], check=True)
+
+def discard(machine):
+    worktree_path = get_artifact_worktree()
+    if not worktree_path:
+        raise Exception("Please run 'kochi artifact init <git_worktree_path>'.")
+    with util.cwd(worktree_path):
+        branch = settings.artifacts_branch(machine)
+        try:
+            destination = subprocess.run(["git", "config", "--get", "branch.{}.remote".format(branch)], stdout=subprocess.PIPE, encoding="utf-8", check=True).stdout.strip()
+        except:
+            raise Exception("Branch '{}' was not found on machine '{}'.".format(branch, machine))
+        subprocess.run(["git", "push", "--delete", destination, branch], check=True)
+        subprocess.run(["git", "branch", "-d", branch], check=True)

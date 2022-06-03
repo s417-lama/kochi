@@ -458,6 +458,14 @@ def artifact_sync_cmd(machine):
     """
     artifact.sync(machine)
 
+@artifact_group.command(name="discard")
+@machine_option
+def artifact_discard_cmd(machine):
+    """
+    Deletes an artifact branch for MACHINE and removes all artifacts stored on MACHINE.
+    """
+    artifact.discard(machine)
+
 # show
 # -----------------------------------------------------------------------------
 
