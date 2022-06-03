@@ -41,6 +41,9 @@ def default_name(path, machine):
 def default_queue(path, machine):
     return dict_get(root_config(path), "default_queue", default=None)
 
+def default_duplicates(path, machine):
+    return dict_get(root_config(path), "default_duplicates", default=1)
+
 def parse_dependencies(dep_conf, machine):
     deps = collections.OrderedDict()
     for dep_dict in dep_conf:
@@ -110,6 +113,9 @@ def batch_job_name(path, batch_name, machine):
 
 def batch_queue(path, batch_name, machine):
     return dict_get(batch(path, batch_name), "queue", default=None) or default_queue(path, machine)
+
+def batch_duplicates(path, batch_name, machine):
+    return dict_get(batch(path, batch_name), "duplicates", default=None) or default_duplicates(path, machine)
 
 def batch_params(path, batch_name, machine):
     params = default_params(path, machine)

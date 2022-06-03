@@ -42,8 +42,10 @@ def push_loop(machine, worker_id, ctx):
     retry_count = 0
     with util.cwd(settings.artifacts_dirpath(machine, ctx.project, worker_id)):
         commit_msg = "[kochi] add artifact on {}".format(machine)
+        subprocess.run(["git", "config", "user.name", "kochi"], check=True)
+        subprocess.run(["git", "config", "user.email", "<>"], check=True)
         subprocess.run(["git", "add", "--all"], check=True)
-        subprocess.run(["git", "-c", "user.name='kochi'", "-c", "user.email='<>'", "commit", "-q", "-m", commit_msg], check=True)
+        subprocess.run(["git", "commit", "-q", "-m", commit_msg], check=True)
         while not try_push(machine):
             if retry_count == max_retry:
                 raise Exception("Could not push artifacts (max_retry={})".format(max_retry))

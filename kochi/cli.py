@@ -92,13 +92,13 @@ def alloc_interact_cmd(machine, nodes, queue):
 # alloc
 # -----------------------------------------------------------------------------
 
-AllocArgs = namedtuple("AllocArgs", ["queue", "nodes", "duplicates", "time_limit", "follow", "blocking", "load_env_script", "alloc_script"])
+AllocArgs = namedtuple("AllocArgs", ["queues", "nodes", "duplicates", "time_limit", "follow", "blocking", "load_env_script", "alloc_script"])
 
 @cli.command(name="alloc")
 @machine_option
-@click.option("-q", "--queue", metavar="QUEUE", required=True, help="Queue to work on")
+@click.option("-q", "--queue", metavar="QUEUE", multiple=True, required=True, help="Queues to work on")
 @click.option("-n", "--nodes", metavar="NODES_SPEC", default="1", help="Specification of nodes to be allocated on machine MACHINE")
-@click.option("-d", "--duplicates", metavar="DUPLICATES", type=int, default=1, help="Number of workers to be created")
+@click.option("-d", "--duplicates", metavar="DUPLICATES", type=int, default=1, help="Number of workers to be created for each queue")
 @click.option("-t", "--time-limit", metavar="TIME_LIMIT", help="Time limit for the system job")
 @click.option("-f", "--follow", is_flag=True, default=False, help="Wait for worker allocation and output log as grows")
 @click.option("-b", "--blocking", is_flag=True, default=False, help="Block to wait for new job arrival")
@@ -108,7 +108,7 @@ def alloc_cmd(machine, queue, nodes, duplicates, time_limit, follow, blocking):
     """
     if machine == "local":
         raise click.UsageError("MACHINE cannot be 'local'.")
-    args = AllocArgs(queue, nodes, duplicates, time_limit, follow, blocking,
+    args = AllocArgs(list(queue), nodes, duplicates, time_limit, follow, blocking,
                      config.load_env_machine_script(machine), config.alloc_script(machine))
     run_on_login_node(machine, "kochi alloc_aux -m {} {}".format(machine, util.serialize(args)))
 
@@ -121,24 +121,25 @@ def alloc_aux_cmd(machine, args_serialized):
     """
     args = util.deserialize(args_serialized)
     worker_ids = []
-    for i in range(args.duplicates):
-        worker_id = worker.init(machine, args.queue, -1)
-        work_cmd = "kochi work -m {} -q {} -i {}".format(machine, args.queue, worker_id)
-        if args.blocking:
-            work_cmd += " -b"
-        cmds = args.load_env_script + [work_cmd]
-        env_dict = dict(
-            KOCHI_ALLOC_NODE_SPEC=args.nodes,
-            KOCHI_ALLOC_TIME_LIMIT=args.time_limit,
-            KOCHI_WORKER_LAUNCH_CMD=" && ".join(cmds),
-        )
-        try:
-            subprocess.run(util.decorate_command(args.alloc_script, env=env_dict), shell=True, executable="/bin/bash", check=True)
-        except subprocess.CalledProcessError:
-            click.secho("Submission of a system job for worker {} failed on machine {}.".format(worker_id, machine), fg="red", file=sys.stderr)
-            exit(1)
-        click.secho("Worker {} submitted on machine {}.".format(worker_id, machine), fg="green")
-        worker_ids.append(worker_id)
+    for q in args.queues:
+        for i in range(args.duplicates):
+            worker_id = worker.init(machine, q, -1)
+            work_cmd = "kochi work -m {} -q {} -i {}".format(machine, q, worker_id)
+            if args.blocking:
+                work_cmd += " -b"
+            cmds = args.load_env_script + [work_cmd]
+            env = os.environ.copy()
+            env["KOCHI_WORKER_LAUNCH_CMD"] = "\n".join(cmds)
+            env["KOCHI_ALLOC_NODE_SPEC"] = args.nodes
+            if args.time_limit:
+                env["KOCHI_ALLOC_TIME_LIMIT"] = args.time_limit
+            try:
+                subprocess.run("\n".join(args.alloc_script), env=env, shell=True, executable="/bin/bash", check=True)
+            except subprocess.CalledProcessError:
+                click.secho("Submission of a system job for worker {} failed on machine {}.".format(worker_id, machine), fg="red", file=sys.stderr)
+                exit(1)
+            click.secho("Worker {} for queue '{}' was requested on machine '{}'.".format(worker_id, q, machine), fg="green")
+            worker_ids.append(worker_id)
     if args.follow:
         worker.watch(machine, worker_ids)
 
@@ -232,7 +233,7 @@ def enqueue_aux_cmd(machine, job_serialized):
     """
     job = util.deserialize(job_serialized)
     job_enqueued = job_queue.push(job)
-    click.secho("Job {} submitted to queue '{}' on machine '{}'.".format(job_enqueued.id, job.queue, machine), fg="blue")
+    click.secho("Job {} was submitted to queue '{}' on machine '{}'.".format(job_enqueued.id, job.queue, machine), fg="blue")
 
 # interact
 # -----------------------------------------------------------------------------
@@ -321,6 +322,7 @@ def batch_cmd(click_ctx, machine, job_config_file, batch_name, git_remote):
 
     job_name_template = string.Template(job_config.batch_job_name(job_config_file, batch_name, machine))
     queue_name_template = string.Template(job_config.batch_queue(job_config_file, batch_name, machine))
+    duplicates = job_config.batch_duplicates(job_config_file, batch_name, machine)
     params = job_config.batch_params(job_config_file, batch_name, machine)
     params.update(batch_name=batch_name)
     artifacts_conf = job_config.batch_artifacts(job_config_file, batch_name, machine)
@@ -338,13 +340,15 @@ def batch_cmd(click_ctx, machine, job_config_file, batch_name, git_remote):
     ctx = context.create(git_remote)
 
     for p in param_product(params):
-        queue = queue_name_template.substitute(p)
-        job_name = job_name_template.substitute(p)
-        job = job_queue.Job(job_name, machine, queue, rec_deps, ctx, p, artifacts_conf, activate_script, script)
-        if machine == "local":
-            click_ctx.invoke(enqueue_aux_cmd, job_serialized=util.serialize(job))
-        else:
-            run_on_login_node(machine, "kochi enqueue_aux -m {} {}".format(machine, util.serialize(job)))
+        for dup in range(duplicates):
+            p.update(duplicate=dup)
+            queue = queue_name_template.substitute(p)
+            job_name = job_name_template.substitute(p)
+            job = job_queue.Job(job_name, machine, queue, rec_deps, ctx, p, artifacts_conf, activate_script, script)
+            if machine == "local":
+                click_ctx.invoke(enqueue_aux_cmd, job_serialized=util.serialize(job))
+            else:
+                run_on_login_node(machine, "kochi enqueue_aux -m {} {}".format(machine, util.serialize(job)))
 
 # inspect
 # -----------------------------------------------------------------------------
