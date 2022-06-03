@@ -92,12 +92,12 @@ def alloc_interact_cmd(machine, nodes, queue):
 # alloc
 # -----------------------------------------------------------------------------
 
-AllocArgs = namedtuple("AllocArgs", ["queues", "nodes", "duplicates", "time_limit", "follow", "blocking", "load_env_script", "alloc_script"])
+AllocArgs = namedtuple("AllocArgs", ["queue", "nodes", "duplicates", "time_limit", "follow", "blocking", "load_env_script", "alloc_script"])
 
 @cli.command(name="alloc")
 @machine_option
-@click.option("-q", "--queue", metavar="QUEUE", multiple=True, required=True, help="Queues to work on")
-@click.option("-n", "--nodes", metavar="NODES_SPEC", default="1", help="Specification of nodes to be allocated on machine MACHINE")
+@click.option("-q", "--queue", metavar="QUEUE", required=True, help="Queue to work on. '${nodes}' in the queue name will be substituted with NODES_SPEC")
+@click.option("-n", "--nodes", metavar="NODES_SPEC", multiple=True, help="Specification of nodes to be allocated on machine MACHINE")
 @click.option("-d", "--duplicates", metavar="DUPLICATES", type=int, default=1, help="Number of workers to be created for each queue")
 @click.option("-t", "--time-limit", metavar="TIME_LIMIT", help="Time limit for the system job")
 @click.option("-f", "--follow", is_flag=True, default=False, help="Wait for worker allocation and output log as grows")
@@ -108,7 +108,9 @@ def alloc_cmd(machine, queue, nodes, duplicates, time_limit, follow, blocking):
     """
     if machine == "local":
         raise click.UsageError("MACHINE cannot be 'local'.")
-    args = AllocArgs(list(queue), nodes, duplicates, time_limit, follow, blocking,
+    if len(nodes) == 0:
+        raise click.UsageError("Please specify NODES_SPEC with --nodes (-n).")
+    args = AllocArgs(queue, list(nodes), duplicates, time_limit, follow, blocking,
                      config.load_env_machine_script(machine), config.alloc_script(machine))
     run_on_login_node(machine, "kochi alloc_aux -m {} {}".format(machine, util.serialize(args)))
 
@@ -121,7 +123,8 @@ def alloc_aux_cmd(machine, args_serialized):
     """
     args = util.deserialize(args_serialized)
     worker_ids = []
-    for q in args.queues:
+    for n in args.nodes:
+        q = string.Template(args.queue).substitute(nodes=n)
         for i in range(args.duplicates):
             worker_id = worker.init(machine, q, -1)
             work_cmd = "kochi work -m {} -q {} -i {}".format(machine, q, worker_id)
@@ -130,7 +133,7 @@ def alloc_aux_cmd(machine, args_serialized):
             cmds = args.load_env_script + [work_cmd]
             env = os.environ.copy()
             env["KOCHI_WORKER_LAUNCH_CMD"] = "\n".join(cmds)
-            env["KOCHI_ALLOC_NODE_SPEC"] = args.nodes
+            env["KOCHI_ALLOC_NODE_SPEC"] = n
             if args.time_limit:
                 env["KOCHI_ALLOC_TIME_LIMIT"] = args.time_limit
             try:
