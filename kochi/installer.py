@@ -44,9 +44,10 @@ def dep_env(project_name, machine, dep, recipe):
     env["KOCHI_RECIPE_" + dep_upper_name] = recipe
     return env
 
-def deps_env(project_name, machine, dependencies):
+def deps_env(project_name, machine, deps):
+    check_dependencies(project_name, machine, deps)
     dep_envs = dict()
-    for d, r in dependencies.items():
+    for d, r in deps.items():
         dep_envs.update(dep_env(project_name, machine, d, r))
     return dep_envs
 
@@ -76,7 +77,6 @@ def check_dependencies(project_name, machine, deps):
         check_dependencies_aux(project_name, machine, current_dep_states, ds)
 
 def install(conf, machine):
-    check_dependencies(conf.project, machine, conf.recipe_dependencies)
     dep_envs = deps_env(conf.project, machine, conf.recipe_dependencies)
     prefix = settings.project_dep_install_dirpath(conf.project, machine, conf.dependency, conf.recipe)
     os.makedirs(prefix, exist_ok=True)

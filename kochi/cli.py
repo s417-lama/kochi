@@ -386,7 +386,7 @@ def run_cmd(machine, dependency, commands):
     project_name = project.project_name_of_cwd()
     deps = get_dependencies_recursively(parse_dependencies(dependency), machine)
     activate_script = sum([config.recipe_activate_script(d, r) for d, r in deps.items()], [])
-    dep_envs = installer.check_dependencies(project_name, machine, deps)
+    dep_envs = installer.deps_env(project_name, machine, deps)
     scripts = activate_script + [subprocess.list2cmdline(list(commands))]
     env = os.environ.copy()
     env["KOCHI_MACHINE"] = machine
