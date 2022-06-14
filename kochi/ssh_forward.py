@@ -113,6 +113,7 @@ def open_webbrowser_if_possible(host, port, path):
     except:
         return False
     else:
+        print("Opening a browser for {}...".format(url))
         webbrowser.open(url)
         return True
 

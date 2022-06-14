@@ -78,6 +78,8 @@ def wait_to_connect(host, port, **opts):
                 else:
                     reset_tty_mode = True
                 try:
+                    for cmd in opts.get("script", []):
+                        conn1.send("{}\n".format(cmd).encode())
                     proxy_fd([conn1.fileno(), sys.stdin.fileno()], [sys.stdout.fileno(), conn1.fileno()])
                 finally:
                     if reset_tty_mode:
@@ -105,7 +107,7 @@ def launch_shell(host, port, token):
         s.send(token.encode())
         pid, fd = pty.fork()
         if pid == 0:
-            argv = [os.environ.get("SHELL", "/bin/sh")]
+            argv = [os.environ.get("SHELL", "/bin/bash")]
             os.execlp(argv[0], *argv)
         t = threading.Thread(target=watch_window_size, args=(fd,))
         t.start()

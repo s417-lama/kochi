@@ -175,6 +175,40 @@ def get_dependencies_recursively(deps, machine):
     get_dependencies_recursively_aux(deps, machine, deps_acc)
     return deps_acc
 
+def create_job(machine, queue, with_context, dependency, name, git_remote, commands):
+    if len(commands) > 0 and pathlib.Path(commands[0]).suffix in [".yaml", ".yml"]:
+        with_context = True
+        build_script = job_config.build_script(commands[0], machine)
+        run_script = job_config.run_script(commands[0], machine)
+        deps = job_config.default_dependencies(commands[0], machine)
+        deps.update(parse_dependencies(dependency))
+        params = job_manager.parse_params(commands, machine)
+        if not name:
+            name = string.Template(job_config.default_name(commands[0], machine)).substitute(params)
+        if not queue:
+            queue = string.Template(job_config.default_queue(commands[0], machine)).substitute(params)
+        script = build_script + run_script
+    else:
+        deps = parse_dependencies(dependency)
+        params = dict()
+        script = [subprocess.list2cmdline(list(commands))] if len(commands) > 0 else []
+
+    if not name:
+        name = "ANON"
+    if not queue:
+        raise click.UsageError("Please specify --queue (-q) option.")
+
+    if with_context and not util.is_inside_git_dir():
+        raise click.UsageError("--with-context (-c) option must be used inside a git directory.")
+    if with_context and not git_remote:
+        project.sync(machine)
+    ctx = context.create(git_remote) if with_context else None
+
+    rec_deps = get_dependencies_recursively(deps, machine)
+    activate_script = sum([config.recipe_activate_script(d, r) for d, r in rec_deps.items()], [])
+
+    return job_queue.Job(name, machine, queue, rec_deps, ctx, params, [], activate_script, script)
+
 @cli.command(name="enqueue", context_settings=dict(ignore_unknown_options=True))
 @machine_option
 @click.option("-q", "--queue", metavar="QUEUE", help="Queue to enqueue a job")
@@ -191,38 +225,7 @@ def enqueue_cmd(click_ctx, machine, queue, with_context, dependency, name, git_r
     COMMANDS := <commandline shell script>
               | job_config.yaml param1=value1 param2=value2 ...
     """
-    if pathlib.Path(commands[0]).suffix in [".yaml", ".yml"]:
-        with_context = True
-        build_script = job_config.build_script(commands[0], machine)
-        run_script = job_config.run_script(commands[0], machine)
-        deps = job_config.default_dependencies(commands[0], machine)
-        deps.update(parse_dependencies(dependency))
-        params = job_manager.parse_params(commands, machine)
-        if not name:
-            name = string.Template(job_config.default_name(commands[0], machine)).substitute(params)
-        if not queue:
-            queue = string.Template(job_config.default_queue(commands[0], machine)).substitute(params)
-        script = build_script + run_script
-    else:
-        deps = parse_dependencies(dependency)
-        params = dict()
-        script = [subprocess.list2cmdline(list(commands))]
-
-    if not name:
-        name = "ANON"
-    if not queue:
-        raise click.UsageError("Please specify --queue (-q) option.")
-
-    if with_context and not util.is_inside_git_dir():
-        raise click.UsageError("--with-context (-c) option must be used inside a git directory.")
-    if with_context and not git_remote:
-        project.sync(machine)
-    ctx = context.create(git_remote) if with_context else None
-
-    rec_deps = get_dependencies_recursively(deps, machine)
-    activate_script = sum([config.recipe_activate_script(d, r) for d, r in rec_deps.items()], [])
-
-    job = job_queue.Job(name, machine, queue, rec_deps, ctx, params, [], activate_script, script)
+    job = create_job(machine, queue, with_context, dependency, name, git_remote, commands)
     if machine == "local":
         click_ctx.invoke(enqueue_aux_cmd, job_serialized=util.serialize(job))
     else:
@@ -248,23 +251,17 @@ InteractArgs = namedtuple("InteractArgs", ["job", "forward_remote_port", "forwar
 @machine_option
 @click.option("-q", "--queue", metavar="QUEUE", required=True, help="Queue to enqueue a job")
 @click.option("-c", "--with-context", is_flag=True, default=False, help="Whether to create context of the current git repository")
-@click.option("-p", "--forward-port", default=8080, help="")
 @dependency_option
 @click.option("-g", "--git-remote", help="URL or path to remote git repository. By default, a remote repository is created on the remote machine via ssh.")
+@click.option("-p", "--forward-port", type=int, default=8080, help="Remote port to be forwarded from local via ssh. $KOCHI_FORWARD_PORT env is set.")
+@click.argument("commands", nargs=-1, type=click.UNPROCESSED)
 @click.pass_context
-def interact_cmd(click_ctx, machine, queue, with_context, forward_port, dependency, git_remote):
+def interact_cmd(click_ctx, machine, queue, with_context, dependency, git_remote, forward_port, commands):
     """
     Enqueues a job to launch an interactive shell on a worker.
+    COMMANDS are automatically executed. See also `enqueue` command.
     """
-    if with_context and not util.is_inside_git_dir():
-        raise click.UsageError("--with-context (-c) option must be used inside a git directory.")
-    if with_context and not git_remote:
-        project.sync(machine)
-    ctx = context.create(git_remote) if with_context else None
-    deps = get_dependencies_recursively(parse_dependencies(dependency), machine)
-    activate_script = sum([config.recipe_activate_script(d, r) for d, r in deps.items()], [])
-    activate_script.append("export KOCHI_FORWARD_PORT={}".format(forward_port))
-    job = job_queue.Job("interact", machine, queue, deps, ctx, dict(), [], activate_script, None)
+    job = create_job(machine, queue, with_context, dependency, "interact", git_remote, commands)
     if machine == "local":
         args = InteractArgs(job, None, None)
         click_ctx.invoke(interact_aux_cmd, args_serialized=util.serialize(args))
@@ -291,13 +288,14 @@ def interact_aux_cmd(machine, args_serialized):
                             "kochi launch_reverse_shell {0} {1} {2} &&" \
                             "echo 'Connection lost.' &&" \
                             "exit 0".format(ip, port, token))
-        job_interact = job_queue.Job(job.name, job.machine, job.queue, job.dependencies, job.context, job.params, job.artifacts_conf, job.activate_script, commands)
+        activate_script = job.activate_script + ["export KOCHI_FORWARD_PORT={}".format(args.forward_target_port)]
+        job_interact = job_queue.Job(job.name, job.machine, job.queue, job.dependencies, job.context, job.params, job.artifacts_conf, activate_script, commands)
         job_enqueued = job_queue.push(job_interact)
         click.secho("Job {} submitted on machine {} (listening on {}:{}).".format(job_enqueued.id, machine, host, port), fg="blue")
     def on_accept(remote_host, remote_port):
         if args.forward_target_port:
             ssh_forward.invoke_reverse_forward(args.forward_remote_port, remote_host, args.forward_target_port)
-    reverse_shell.wait_to_connect("0.0.0.0", 0, on_listen_hook=on_listen, on_accept_hook=on_accept)
+    reverse_shell.wait_to_connect("0.0.0.0", 0, on_listen_hook=on_listen, on_accept_hook=on_accept, script=job.script)
 
 @cli.command(name="launch_reverse_shell", hidden=True)
 @click.argument("host", required=True)
