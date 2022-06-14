@@ -61,6 +61,8 @@ def wait_to_connect(host, port, **opts):
             opts["on_listen_hook"](*s.getsockname(), token)
         with accept_with_token(s, token) as conn1:
             with accept_with_token(s, token) as conn2:
+                if opts.get("on_accept_hook"):
+                    opts["on_accept_hook"](*conn1.getpeername())
                 def send_win_size():
                     nonlocal conn2
                     buf = array.array("h", [0] * 4)

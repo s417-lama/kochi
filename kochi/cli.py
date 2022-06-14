@@ -23,6 +23,7 @@ from . import installer
 from . import reverse_shell
 from . import job_config
 from . import artifact
+from . import ssh_forward
 
 def ensure_init():
     sshd.ensure_init()
@@ -241,14 +242,17 @@ def enqueue_aux_cmd(machine, job_serialized):
 # interact
 # -----------------------------------------------------------------------------
 
+InteractArgs = namedtuple("InteractArgs", ["job", "forward_remote_port", "forward_target_port"])
+
 @cli.command(name="interact")
 @machine_option
 @click.option("-q", "--queue", metavar="QUEUE", required=True, help="Queue to enqueue a job")
 @click.option("-c", "--with-context", is_flag=True, default=False, help="Whether to create context of the current git repository")
+@click.option("-p", "--forward-port", default=8080, help="")
 @dependency_option
 @click.option("-g", "--git-remote", help="URL or path to remote git repository. By default, a remote repository is created on the remote machine via ssh.")
 @click.pass_context
-def interact_cmd(click_ctx, machine, queue, with_context, dependency, git_remote):
+def interact_cmd(click_ctx, machine, queue, with_context, forward_port, dependency, git_remote):
     """
     Enqueues a job to launch an interactive shell on a worker.
     """
@@ -259,20 +263,25 @@ def interact_cmd(click_ctx, machine, queue, with_context, dependency, git_remote
     ctx = context.create(git_remote) if with_context else None
     deps = get_dependencies_recursively(parse_dependencies(dependency), machine)
     activate_script = sum([config.recipe_activate_script(d, r) for d, r in deps.items()], [])
+    activate_script.append("export KOCHI_FORWARD_PORT={}".format(forward_port))
     job = job_queue.Job("interact", machine, queue, deps, ctx, dict(), [], activate_script, None)
     if machine == "local":
-        click_ctx.invoke(interact_aux_cmd, job_serialized=util.serialize(job))
+        args = InteractArgs(job, None, None)
+        click_ctx.invoke(interact_aux_cmd, args_serialized=util.serialize(args))
     else:
-        run_on_login_node(machine, "kochi interact_aux -m {} {}".format(machine, util.serialize(job)))
+        with ssh_forward.reverse_forward(config.login_host(machine)) as remote_port:
+            args = InteractArgs(job, remote_port, forward_port)
+            run_on_login_node(machine, "kochi interact_aux -m {} {}".format(machine, util.serialize(args)))
 
 @cli.command(name="interact_aux", hidden=True)
 @machine_option
-@click.argument("job_serialized", required=True)
-def interact_aux_cmd(machine, job_serialized):
+@click.argument("args_serialized", required=True)
+def interact_aux_cmd(machine, args_serialized):
     """
     For internal use only.
     """
-    job = util.deserialize(job_serialized)
+    args = util.deserialize(args_serialized)
+    job = args.job
     def on_listen(host, port, token):
         commands = []
         ip_address_candidates = ["127.0.0.1"] if machine == "local" else util.get_ip_address_candidates()
@@ -285,7 +294,10 @@ def interact_aux_cmd(machine, job_serialized):
         job_interact = job_queue.Job(job.name, job.machine, job.queue, job.dependencies, job.context, job.params, job.artifacts_conf, job.activate_script, commands)
         job_enqueued = job_queue.push(job_interact)
         click.secho("Job {} submitted on machine {} (listening on {}:{}).".format(job_enqueued.id, machine, host, port), fg="blue")
-    reverse_shell.wait_to_connect("0.0.0.0", 0, on_listen_hook=on_listen)
+    def on_accept(remote_host, remote_port):
+        if args.forward_target_port:
+            ssh_forward.invoke_reverse_forward(args.forward_remote_port, remote_host, args.forward_target_port)
+    reverse_shell.wait_to_connect("0.0.0.0", 0, on_listen_hook=on_listen, on_accept_hook=on_accept)
 
 @cli.command(name="launch_reverse_shell", hidden=True)
 @click.argument("host", required=True)
