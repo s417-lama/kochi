@@ -108,14 +108,15 @@ def recv_until_close(s):
 def open_webbrowser_if_possible(host, port, path):
     url = "http://localhost:{}{}".format(port, path)
     try:
-        with urllib.request.urlopen(url, timeout=1):
+        with urllib.request.urlopen(url, timeout=3):
             pass
-    except:
+    except (ConnectionRefusedError, ConnectionResetError):
         return False
-    else:
-        print("Opening a browser for {}...".format(url))
-        webbrowser.open(url)
-        return True
+    except:
+        pass
+    print("Opening a browser for {}...".format(url))
+    webbrowser.open(url)
+    return True
 
 @contextlib.contextmanager
 def reverse_forward(dest):
@@ -133,7 +134,8 @@ def reverse_forward(dest):
                     target_host, target_port = target_str.split(":")
                     with local_forward(dest, target_host, int(target_port)) as local_port:
                         browser_opened = False
-                        while not e.wait(1):
+                        timeout = 3
+                        while not e.wait(timeout):
                             if not browser_opened:
                                 browser_opened = open_webbrowser_if_possible("localhost", local_port, "/")
             e = threading.Event()
