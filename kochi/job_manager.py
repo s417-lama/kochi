@@ -126,7 +126,11 @@ def parse_params(commands, machine):
 def params2env(params):
     env = dict()
     for k, v in params.items():
-        env["KOCHI_PARAM_" + k.upper().replace("-", "_")] = str(v)
+        env_name = "KOCHI_PARAM_" + k.upper().replace("-", "_")
+        if isinstance(v, bool):
+            env[env_name] = "true" if v else "false"
+        else:
+            env[env_name] = str(v)
     return env
 
 def init(job, machine, queue_name):
