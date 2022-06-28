@@ -69,17 +69,17 @@ def project_git_dirpath(project_name):
 def project_artifact_git_dirpath(project_name):
     return os.path.join(project_dirpath(), project_name, "artifact_git")
 
-def project_dep_install_dirpath(project_name, machine, dep_name, recipe_name):
+def project_dep_install_dest_dirpath(project_name, machine, dep_name, recipe_name):
     return os.path.join(project_dirpath(), project_name, "install", machine, dep_name, recipe_name)
 
-def project_dep_install_tmp_dirpath(project_name, machine, dep_name, recipe_name):
-    return os.path.join(project_dirpath(), project_name, "tmp", "install", machine, dep_name, recipe_name)
+def project_dep_install_src_dirpath(project_name, machine, dep_name, recipe_name):
+    return os.path.join(project_dirpath(), project_name, "install_src", machine, dep_name, recipe_name)
 
 def project_dep_install_log_filepath(project_name, machine, dep_name, recipe_name):
-    return os.path.join(project_dep_install_dirpath(project_name, machine, dep_name, recipe_name), ".kochi_log.txt")
+    return os.path.join(project_dep_install_dest_dirpath(project_name, machine, dep_name, recipe_name), ".kochi_log.txt")
 
 def project_dep_install_state_filepath(project_name, machine, dep_name, recipe_name):
-    return os.path.join(project_dep_install_dirpath(project_name, machine, dep_name, recipe_name), ".kochi_state.txt")
+    return os.path.join(project_dep_install_dest_dirpath(project_name, machine, dep_name, recipe_name), ".kochi_state.txt")
 
 # sshd
 # -----------------------------------------------------------------------------

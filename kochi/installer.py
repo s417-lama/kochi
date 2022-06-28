@@ -1,6 +1,7 @@
 from collections import namedtuple
 import os
 import sys
+import shutil
 import subprocess
 import time
 import datetime
@@ -40,7 +41,7 @@ def on_complete(conf, machine):
 def dep_env(project_name, machine, dep, recipe):
     dep_upper_name = dep.upper().replace("-", "_")
     env = dict()
-    env["KOCHI_INSTALL_PREFIX_" + dep_upper_name] = settings.project_dep_install_dirpath(project_name, machine, dep, recipe)
+    env["KOCHI_INSTALL_PREFIX_" + dep_upper_name] = settings.project_dep_install_dest_dirpath(project_name, machine, dep, recipe)
     env["KOCHI_RECIPE_" + dep_upper_name] = recipe
     return env
 
@@ -78,9 +79,13 @@ def check_dependencies(project_name, machine, deps):
 
 def install(conf, machine):
     dep_envs = deps_env(conf.project, machine, conf.recipe_dependencies)
-    prefix = settings.project_dep_install_dirpath(conf.project, machine, conf.dependency, conf.recipe)
-    os.makedirs(prefix, exist_ok=True)
-    with util.tmpdir(settings.project_dep_install_tmp_dirpath(conf.project, machine, conf.dependency, conf.recipe)):
+    src_dir = settings.project_dep_install_src_dirpath(conf.project, machine, conf.dependency, conf.recipe)
+    dest_dir = settings.project_dep_install_dest_dirpath(conf.project, machine, conf.dependency, conf.recipe)
+    shutil.rmtree(src_dir, ignore_errors=True)
+    shutil.rmtree(dest_dir, ignore_errors=True)
+    os.makedirs(src_dir, exist_ok=True)
+    os.makedirs(dest_dir, exist_ok=True)
+    with util.cwd(src_dir):
         with context.context(conf.context):
             with util.tee(settings.project_dep_install_log_filepath(conf.project, machine, conf.dependency, conf.recipe)) as tee:
                 color = "magenta"
@@ -88,7 +93,7 @@ def install(conf, machine):
                 print(click.style("*" * 80, fg=color), file=tee.stdin, flush=True)
                 env = os.environ.copy()
                 env["KOCHI_MACHINE"] = machine
-                env["KOCHI_INSTALL_PREFIX"] = prefix
+                env["KOCHI_INSTALL_PREFIX"] = dest_dir
                 env.update(dep_envs)
                 env.update(conf.envs)
                 try:
