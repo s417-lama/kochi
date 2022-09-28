@@ -8,6 +8,7 @@ from . import util
 from . import settings
 from . import job_manager
 from . import job_queue
+from . import job_canceler
 from . import atomic_counter
 from . import context
 from . import sshd
@@ -26,11 +27,12 @@ def worker_loop(idx, queue_name, blocking, machine, stdout):
     while True:
         job = job_queue.pop(machine, queue_name)
         if job:
-            build_state = job_manager.build_state(job, machine)
-            exec_build = build_state != prev_job_build_state
-            build_success = job_manager.run_job(job, idx, machine, queue_name, exec_build, stdout)
-            if build_success:
-                prev_job_build_state = build_state
+            if not job_canceler.check_canceled(machine, job.id):
+                build_state = job_manager.build_state(job, machine)
+                exec_build = build_state != prev_job_build_state
+                build_success = job_manager.run_job(job, idx, machine, queue_name, exec_build, stdout)
+                if build_success:
+                    prev_job_build_state = build_state
         elif blocking:
             time.sleep(0.1)
         else:

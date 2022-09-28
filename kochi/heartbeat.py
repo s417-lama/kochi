@@ -1,6 +1,7 @@
 from collections import namedtuple
 import sys
 import time
+import queue
 import multiprocessing
 import contextlib
 import enum
@@ -44,20 +45,22 @@ def update_timestamp(filename, **opts):
         f.write(util.serialize(next_state))
         f.truncate()
 
-def daemon(queue, filename, interval):
+def daemon(q, filename, interval):
     while True:
         try:
             update_timestamp(filename)
-            if queue.empty():
-                time.sleep(interval)
-            elif queue.get_nowait() == "terminate":
-                update_timestamp(filename, state=RunningState.TERMINATED)
-                return
+            try:
+                item = q.get(timeout=interval)
+            except queue.Empty:
+                pass
             else:
-                print("Something is wrong in heartbeat.", file=sys.stderr)
-                exit(1)
+                if item == "terminate":
+                    update_timestamp(filename, state=RunningState.TERMINATED)
+                    return
+                else:
+                    print("Something is wrong in heartbeat.", file=sys.stderr)
+                    exit(1)
         except KeyboardInterrupt:
-            time.sleep(0.1) # wait for a possible termination message
             pass
 
 @contextlib.contextmanager

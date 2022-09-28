@@ -57,6 +57,9 @@ def job_log_filepath(machine, idx):
 def job_state_filepath(machine, idx):
     return os.path.join(job_dirpath(machine), "state_{}.txt".format(idx))
 
+def job_cancelreq_filepath(machine, idx):
+    return os.path.join(job_dirpath(machine), "cancelreq_{}.txt".format(idx))
+
 # Projects
 # -----------------------------------------------------------------------------
 

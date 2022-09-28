@@ -365,6 +365,25 @@ def batch_cmd(click_ctx, machine, job_config_file, batch_name, git_remote):
             else:
                 run_on_login_node(machine, "kochi enqueue_aux -m {} {}".format(machine, util.serialize(job)))
 
+# cacnel
+# -----------------------------------------------------------------------------
+
+@on_machine_cmd(cli, "cancel")
+@click.option("-a", "--all", is_flag=True, default=False, help="Cancel all jobs.")
+@click.argument("job_ids", type=int, nargs=-1)
+def cancel_cmd(machine, all, job_ids):
+    """
+    Cancel jobs of JOB_IDS on MACHINE.
+    """
+    for job_id in job_ids:
+        state = job_manager.get_state(machine, job_id)
+        if state.running_state == job_manager.RunningState.WAITING or \
+           state.running_state == job_manager.RunningState.RUNNING:
+            job_manager.cancel(machine, job_id)
+            print("Job {} was canceled.".format(job_id))
+        else:
+            print("Job {} has already finished (state: {}).".format(job_id, str(state.running_state)))
+
 # inspect
 # -----------------------------------------------------------------------------
 

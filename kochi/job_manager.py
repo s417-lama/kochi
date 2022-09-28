@@ -12,6 +12,7 @@ from . import heartbeat
 from . import installer
 from . import atomic_counter
 from . import job_config
+from . import job_canceler
 from . import artifact
 
 class RunningState(enum.IntEnum):
@@ -24,6 +25,8 @@ class RunningState(enum.IntEnum):
             return "terminated"
         elif self.value == self.ABORTED:
             return "aborted"
+        elif self.value == self.CANCELED:
+            return "canceled"
         elif self.value == self.KILLED:
             return "killed"
         else:
@@ -33,7 +36,8 @@ class RunningState(enum.IntEnum):
     RUNNING = 2
     TERMINATED = 3
     ABORTED = 4
-    KILLED = 5
+    CANCELED = 5
+    KILLED = 6
 
 state_fields = ["running_state", "name", "queue", "worker_id", "context", "dependency_states", "envs",
                 "artifacts_conf", "activate_script", "build_executed", "build_params", "build_script",
@@ -95,20 +99,25 @@ def run_job(job, worker_id, machine, queue_name, exec_build, stdout):
             # save job state
             on_start_job(job, worker_id, machine, env, exec_build, build_params, build_script, run_params, run_script)
             try:
-                # build
-                if exec_build:
-                    subprocess.run("\n".join(job.activate_script + build_script), env=build_env, shell=True, executable="/bin/bash",
+                with job_canceler.job_canceler(machine, job.id):
+                    # build
+                    if exec_build:
+                        subprocess.run("\n".join(job.activate_script + build_script), env=build_env, shell=True, executable="/bin/bash",
+                                       stdout=tee.stdin, stderr=tee.stdin, check=True)
+                        build_success = True
+                    # run
+                    subprocess.run("\n".join(job.activate_script + run_script), env=run_env, shell=True, executable="/bin/bash",
                                    stdout=tee.stdin, stderr=tee.stdin, check=True)
-                    build_success = True
-                # run
-                subprocess.run("\n".join(job.activate_script + run_script), env=run_env, shell=True, executable="/bin/bash",
-                               stdout=tee.stdin, stderr=tee.stdin, check=True)
-                if job.context and len(job.artifacts_conf) > 0:
-                    print(click.style("Saving artifacts...", fg=color), file=tee.stdin, flush=True)
-                    artifact.save(machine, worker_id, job)
+                    if job.context and len(job.artifacts_conf) > 0:
+                        print(click.style("Saving artifacts...", fg=color), file=tee.stdin, flush=True)
+                        artifact.save(machine, worker_id, job)
             except KeyboardInterrupt:
-                print(click.style("Kochi job {} (ID={}) interrupted.".format(job.name, job.id), fg="red"), file=tee.stdin, flush=True)
-                on_finish_job(job, worker_id, machine, RunningState.ABORTED)
+                if job_canceler.check_canceled(machine, job.id):
+                    print(click.style("Kochi job {} (ID={}) canceled.".format(job.name, job.id), fg="red"), file=tee.stdin, flush=True)
+                    on_finish_job(job, worker_id, machine, RunningState.CANCELED)
+                else:
+                    print(click.style("Kochi job {} (ID={}) interrupted.".format(job.name, job.id), fg="red"), file=tee.stdin, flush=True)
+                    on_finish_job(job, worker_id, machine, RunningState.ABORTED)
             except BaseException as e:
                 print(click.style("Kochi job {} (ID={}) failed: {}".format(job.name, job.id, str(e)), fg="red"), file=tee.stdin, flush=True)
                 on_finish_job(job, worker_id, machine, RunningState.ABORTED)
@@ -117,6 +126,9 @@ def run_job(job, worker_id, machine, queue_name, exec_build, stdout):
             print(click.style("-" * 80, fg=color), file=tee.stdin, flush=True)
             return build_success
 
+def cancel(machine, job_id):
+    job_canceler.cancel(machine, job_id)
+
 def invalid_state():
     return State(*[RunningState.INVALID if f == "running_state" else None for f in state_fields])
 
@@ -124,7 +136,12 @@ def get_state(machine, job_id):
     try:
         with open(settings.job_state_filepath(machine, job_id), "r") as f:
             state = util.deserialize(f.read())
-        if state.running_state == RunningState.RUNNING:
+        if state.running_state == RunningState.WAITING:
+            if job_canceler.check_canceled(machine, job_id):
+                return update_state(state, running_state=RunningState.CANCELED)
+            else:
+                return state
+        elif state.running_state == RunningState.RUNNING:
             worker_state = heartbeat.get_state(settings.worker_heartbeat_filepath(machine, state.worker_id))
             if worker_state.running_state == heartbeat.RunningState.RUNNING:
                 return update_state(state, latest_time=current_timestamp())
