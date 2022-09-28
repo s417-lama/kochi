@@ -375,14 +375,23 @@ def cancel_cmd(machine, all, job_ids):
     """
     Cancel jobs of JOB_IDS on MACHINE.
     """
-    for job_id in job_ids:
-        state = job_manager.get_state(machine, job_id)
-        if state.running_state == job_manager.RunningState.WAITING or \
-           state.running_state == job_manager.RunningState.RUNNING:
-            job_manager.cancel(machine, job_id)
-            print("Job {} was canceled.".format(job_id))
-        else:
-            print("Job {} has already finished (state: {}).".format(job_id, str(state.running_state)))
+    if all:
+        job_states = stats.get_all_active_job_states(machine)
+    else:
+        job_states = []
+        for job_id in job_ids:
+            state = job_manager.get_state(machine, job_id)
+            job_states.append((job_id, state))
+    if job_states:
+        for job_id, state in job_states:
+            if state.running_state == job_manager.RunningState.WAITING or \
+               state.running_state == job_manager.RunningState.RUNNING:
+                job_manager.cancel(machine, job_id)
+                print("Job {} was canceled.".format(job_id))
+            else:
+                print("Job {} has already finished (state: {}).".format(job_id, str(state.running_state)))
+    else:
+        print("No job was canceled.")
 
 # inspect
 # -----------------------------------------------------------------------------
