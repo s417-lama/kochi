@@ -22,10 +22,15 @@ def get_worker_id(machine):
     return idx
 
 def worker_loop(idx, queue_name, blocking, machine, stdout):
+    prev_job_build_state = dict()
     while True:
         job = job_queue.pop(machine, queue_name)
         if job:
-            job_manager.run_job(job, idx, machine, queue_name, stdout)
+            build_state = job_manager.build_state(job, machine)
+            exec_build = build_state != prev_job_build_state
+            build_success = job_manager.run_job(job, idx, machine, queue_name, exec_build, stdout)
+            if build_success:
+                prev_job_build_state = build_state
         elif blocking:
             time.sleep(0.1)
         else:

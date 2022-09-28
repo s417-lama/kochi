@@ -85,19 +85,17 @@ def default_params(path, machine):
 # -----------------------------------------------------------------------------
 
 def build(path):
-    return dict_get(root_config(path), "build")
-
-def build_script(path, machine):
-    return wrap_list(dict_get(build(path), "script"))
+    build_conf = dict_get(root_config(path), "build", default=dict())
+    build_conf.update(script=wrap_list(dict_get(build_conf, "script", default=[])))
+    return build_conf
 
 # Run
 # -----------------------------------------------------------------------------
 
 def run(path):
-    return dict_get(root_config(path), "run")
-
-def run_script(path, machine):
-    return wrap_list(dict_get(run(path), "script"))
+    run_conf = dict_get(root_config(path), "run", default=dict())
+    run_conf.update(script=wrap_list(dict_get(run_conf, "script", default=[])))
+    return run_conf
 
 # Batches
 # -----------------------------------------------------------------------------
@@ -128,16 +126,16 @@ def batch_dependencies(path, batch_name, machine):
     return deps
 
 def batch_build(path, batch_name):
-    return dict_get(batch(path, batch_name), "build", default=dict())
-
-def batch_build_script(path, batch_name, machine):
-    return dict_get(batch_build(path, batch_name), "script", default=None) or build_script(path, machine)
+    build_conf = build(path)
+    build_conf.update(dict_get(batch(path, batch_name), "build", default=dict()))
+    build_conf.update(script=wrap_list(dict_get(build_conf, "script", default=[])))
+    return build_conf
 
 def batch_run(path, batch_name):
-    return dict_get(batch(path, batch_name), "run", default=dict())
-
-def batch_run_script(path, batch_name, machine):
-    return dict_get(batch_run(path, batch_name), "script", default=None) or run_script(path, machine)
+    run_conf = run(path)
+    run_conf.update(dict_get(batch(path, batch_name), "run", default=dict()))
+    run_conf.update(script=wrap_list(dict_get(run_conf, "script", default=[])))
+    return run_conf
 
 def batch_artifacts(path, batch_name, machine):
     return dict_get(batch(path, batch_name), "artifacts", default=[])

@@ -35,8 +35,9 @@ class RunningState(enum.IntEnum):
     ABORTED = 4
     KILLED = 5
 
-state_fields = ["running_state", "name", "queue", "worker_id", "context", "dependency_states", "params", "envs",
-                "artifacts_conf", "activate_script", "script", "init_time", "start_time", "latest_time"]
+state_fields = ["running_state", "name", "queue", "worker_id", "context", "dependency_states", "envs",
+                "artifacts_conf", "activate_script", "build_executed", "build_params", "build_script",
+                "run_params", "run_script", "init_time", "start_time", "latest_time"]
 State = namedtuple("State", state_fields)
 
 def update_state(state, **kwargs):
@@ -48,10 +49,12 @@ def update_state(state, **kwargs):
 def current_timestamp():
     return int(time.time())
 
-def on_start_job(job, worker_id, machine, envs):
+def on_start_job(job, worker_id, machine, envs, build_executed, build_params, build_script, run_params, run_script):
     with open(settings.job_state_filepath(machine, job.id), "r+") as f:
         state = util.deserialize(f.read())
-        next_state = update_state(state, running_state=RunningState.RUNNING, worker_id=worker_id, start_time=current_timestamp(), envs=envs)
+        next_state = update_state(state, running_state=RunningState.RUNNING, worker_id=worker_id, start_time=current_timestamp(), envs=envs,
+                                  build_executed=build_executed, build_params=build_params, build_script=build_script,
+                                  run_params=run_params, run_script=run_script)
         f.seek(0)
         f.write(util.serialize(next_state))
         f.truncate()
@@ -64,7 +67,8 @@ def on_finish_job(job, worker_id, machine, running_state):
         f.write(util.serialize(next_state))
         f.truncate()
 
-def run_job(job, worker_id, machine, queue_name, stdout):
+def run_job(job, worker_id, machine, queue_name, exec_build, stdout):
+    build_success = False
     dep_envs = installer.deps_env(job.context.project, machine, job.dependencies) if job.context else dict()
     with context.context(job.context):
         with util.tee(settings.job_log_filepath(machine, job.id), stdout=stdout) as tee:
@@ -73,15 +77,31 @@ def run_job(job, worker_id, machine, queue_name, stdout):
             print(click.style("-" * 80, fg=color), file=tee.stdin, flush=True)
             env = os.environ.copy()
             env.update(dep_envs)
-            env.update(params2env(job.params))
             env["KOCHI_MACHINE"] = machine
             env["KOCHI_WORKER_ID"] = str(worker_id)
             env["KOCHI_QUEUE"] = queue_name
             env["KOCHI_JOB_ID"] = str(job.id)
             env["KOCHI_JOB_NAME"] = job.name
-            on_start_job(job, worker_id, machine, env)
+            # build env
+            build_script = job.build_conf.get("script", [])
+            build_params = filter_params(job.params, job.build_conf.get("depend_params", []))
+            build_env = env.copy()
+            build_env.update(params2env(build_params))
+            # run env
+            run_script = job.run_conf.get("script", [])
+            run_params = filter_params(job.params, job.run_conf.get("depend_params", []))
+            run_env = env.copy()
+            run_env.update(params2env(run_params))
+            # save job state
+            on_start_job(job, worker_id, machine, env, exec_build, build_params, build_script, run_params, run_script)
             try:
-                subprocess.run("\n".join(job.activate_script + job.script), env=env, shell=True, executable="/bin/bash",
+                # build
+                if exec_build:
+                    subprocess.run("\n".join(job.activate_script + build_script), env=build_env, shell=True, executable="/bin/bash",
+                                   stdout=tee.stdin, stderr=tee.stdin, check=True)
+                    build_success = True
+                # run
+                subprocess.run("\n".join(job.activate_script + run_script), env=run_env, shell=True, executable="/bin/bash",
                                stdout=tee.stdin, stderr=tee.stdin, check=True)
                 if job.context and len(job.artifacts_conf) > 0:
                     print(click.style("Saving artifacts...", fg=color), file=tee.stdin, flush=True)
@@ -95,6 +115,7 @@ def run_job(job, worker_id, machine, queue_name, stdout):
             else:
                 on_finish_job(job, worker_id, machine, RunningState.TERMINATED)
             print(click.style("-" * 80, fg=color), file=tee.stdin, flush=True)
+            return build_success
 
 def invalid_state():
     return State(*[RunningState.INVALID if f == "running_state" else None for f in state_fields])
@@ -133,11 +154,23 @@ def params2env(params):
             env[env_name] = str(v)
     return env
 
+def filter_params(params, param_list):
+    return dict(filter(lambda x: x[0] in param_list, params.items()))
+
+def get_dependency_states(job, machine):
+    return [installer.get_state(job.context.project, d, r, machine) for d, r in job.dependencies.items()]
+
+def build_state(job, machine):
+    dep_states = get_dependency_states(job, machine)
+    build_params = filter_params(job.params, job.build_conf.get("depend_params", []))
+    return dict(dependency_states=dep_states, context=job.context, params=build_params)
+
 def init(job, machine, queue_name):
     with open(settings.job_state_filepath(machine, job.id), "w") as f:
-        dependency_states = [installer.get_state(job.context.project, d, r, machine) for d, r in job.dependencies.items()]
-        state = State(RunningState.WAITING, job.name, queue_name, None, job.context, dependency_states, job.params, None,
-                      job.artifacts_conf, job.activate_script, job.script, current_timestamp(), None, None)
+        dep_states = get_dependency_states(job, machine)
+        state = State(RunningState.WAITING, job.name, queue_name, None, job.context, dep_states, None,
+                      job.artifacts_conf, job.activate_script, None, None, None, None, None,
+                      current_timestamp(), None, None)
         f.write(util.serialize(state))
 
 def ensure_init(machine):

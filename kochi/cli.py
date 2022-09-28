@@ -178,8 +178,8 @@ def get_dependencies_recursively(deps, machine):
 def create_job(machine, queue, with_context, dependency, name, git_remote, commands):
     if len(commands) > 0 and pathlib.Path(commands[0]).suffix in [".yaml", ".yml"]:
         with_context = True
-        build_script = job_config.build_script(commands[0], machine)
-        run_script = job_config.run_script(commands[0], machine)
+        build_conf = job_config.build(commands[0])
+        run_conf = job_config.run(commands[0])
         deps = job_config.default_dependencies(commands[0], machine)
         deps.update(parse_dependencies(dependency))
         params = job_manager.parse_params(commands, machine)
@@ -187,11 +187,11 @@ def create_job(machine, queue, with_context, dependency, name, git_remote, comma
             name = string.Template(job_config.default_name(commands[0], machine)).substitute(params)
         if not queue:
             queue = string.Template(job_config.default_queue(commands[0], machine)).substitute(params)
-        script = build_script + run_script
     else:
         deps = parse_dependencies(dependency)
         params = dict()
-        script = [subprocess.list2cmdline(list(commands))] if len(commands) > 0 else []
+        build_conf = dict()
+        run_conf = dict(script=[subprocess.list2cmdline(list(commands))] if len(commands) > 0 else [])
 
     if not name:
         name = "ANON"
@@ -207,7 +207,8 @@ def create_job(machine, queue, with_context, dependency, name, git_remote, comma
     rec_deps = get_dependencies_recursively(deps, machine)
     activate_script = sum([config.recipe_activate_script(d, r) for d, r in rec_deps.items()], [])
 
-    return job_queue.Job(name, machine, queue, rec_deps, ctx, params, [], activate_script, script)
+    return job_queue.Job(name, machine, queue, rec_deps, ctx, params,
+                         [], activate_script, build_conf, run_conf)
 
 @cli.command(name="enqueue", context_settings=dict(ignore_unknown_options=True))
 @machine_option
@@ -289,13 +290,14 @@ def interact_aux_cmd(machine, args_serialized):
                             "echo 'Connection lost.' &&" \
                             "exit 0".format(ip, port, token))
         activate_script = job.activate_script + ["export KOCHI_FORWARD_PORT={}".format(args.forward_target_port)]
-        job_interact = job_queue.Job(job.name, job.machine, job.queue, job.dependencies, job.context, job.params, job.artifacts_conf, activate_script, commands)
+        job_interact = job_queue.Job(job.name, job.machine, job.queue, job.dependencies, job.context, job.params,
+                                     job.artifacts_conf, activate_script, job.build_conf, dict(job.run_conf, script=commands))
         job_enqueued = job_queue.push(job_interact)
         click.secho("Job {} submitted on machine {} (listening on {}:{}).".format(job_enqueued.id, machine, host, port), fg="blue")
     def on_accept(remote_host, remote_port):
         if args.forward_target_port:
             ssh_forward.invoke_reverse_forward(args.forward_remote_port, remote_host, args.forward_target_port)
-    reverse_shell.wait_to_connect("0.0.0.0", 0, on_listen_hook=on_listen, on_accept_hook=on_accept, script=job.script)
+    reverse_shell.wait_to_connect("0.0.0.0", 0, on_listen_hook=on_listen, on_accept_hook=on_accept, script=job.run_conf.get("script", []))
 
 @cli.command(name="launch_reverse_shell", hidden=True)
 @click.argument("host", required=True)
@@ -329,9 +331,8 @@ def batch_cmd(click_ctx, machine, job_config_file, batch_name, git_remote):
     """
     Enqueues jobs specified as BATCH_NAME in JOB_CONFIG_FILE on MACHINE.
     """
-    build_script = job_config.batch_build_script(job_config_file, batch_name, machine)
-    run_script = job_config.batch_run_script(job_config_file, batch_name, machine)
-    script = build_script + run_script
+    build_conf = job_config.batch_build(job_config_file, batch_name, machine)
+    run_conf = job_config.batch_run(job_config_file, batch_name, machine)
 
     job_name_template = string.Template(job_config.batch_job_name(job_config_file, batch_name, machine))
     queue_name_template = string.Template(job_config.batch_queue(job_config_file, batch_name, machine))
@@ -357,7 +358,8 @@ def batch_cmd(click_ctx, machine, job_config_file, batch_name, git_remote):
             p.update(duplicate=dup)
             queue = queue_name_template.substitute(p)
             job_name = job_name_template.substitute(p)
-            job = job_queue.Job(job_name, machine, queue, rec_deps, ctx, p, artifacts_conf, activate_script, script)
+            job = job_queue.Job(job_name, machine, queue, rec_deps, ctx, p,
+                                artifacts_conf, activate_script, build_conf, run_conf)
             if machine == "local":
                 click_ctx.invoke(enqueue_aux_cmd, job_serialized=util.serialize(job))
             else:
