@@ -1,9 +1,11 @@
 import fcntl
 
-def reset(filename):
+def reset(filename, init_value=0):
     with open(filename, "w+") as f:
         fcntl.flock(f.fileno(), fcntl.LOCK_EX)
-        f.write(str(0))
+        f.seek(0)
+        f.write(str(init_value))
+        f.truncate()
 
 def fetch(filename):
     with open(filename, "r+") as f:

@@ -196,3 +196,7 @@ def ensure_init(machine):
         atomic_counter.fetch(settings.job_counter_filepath(machine))
     except:
         atomic_counter.reset(settings.job_counter_filepath(machine))
+    try:
+        atomic_counter.fetch(settings.job_min_active_filepath(machine))
+    except:
+        atomic_counter.reset(settings.job_min_active_filepath(machine))

@@ -30,6 +30,9 @@ def worker_dirpath(machine):
 def worker_counter_filepath(machine):
     return os.path.join(worker_dirpath(machine), "counter.lock")
 
+def worker_min_active_filepath(machine):
+    return os.path.join(worker_dirpath(machine), "min_active.lock")
+
 def worker_log_filepath(machine, idx):
     return os.path.join(worker_dirpath(machine), "log_{}.txt".format(idx))
 
@@ -50,6 +53,9 @@ def job_dirpath(machine):
 
 def job_counter_filepath(machine):
     return os.path.join(job_dirpath(machine), "counter.lock")
+
+def job_min_active_filepath(machine):
+    return os.path.join(job_dirpath(machine), "min_active.lock")
 
 def job_log_filepath(machine, idx):
     return os.path.join(job_dirpath(machine), "log_{}.txt".format(idx))

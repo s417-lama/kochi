@@ -93,6 +93,10 @@ def ensure_init(machine):
         atomic_counter.fetch(settings.worker_counter_filepath(machine))
     except:
         atomic_counter.reset(settings.worker_counter_filepath(machine))
+    try:
+        atomic_counter.fetch(settings.worker_min_active_filepath(machine))
+    except:
+        atomic_counter.reset(settings.worker_min_active_filepath(machine))
 
 if __name__ == "__main__":
     """

@@ -9,18 +9,64 @@ from . import worker
 from . import job_manager
 from . import installer
 
+def get_all_worker_states(machine):
+    max_workers = atomic_counter.fetch(settings.worker_counter_filepath(machine))
+    worker_states = []
+    for idx in range(max_workers):
+        state = worker.get_state(machine, idx)
+        worker_states.append((idx, state))
+    return worker_states
+
+def get_all_active_worker_states(machine):
+    min_workers = atomic_counter.fetch(settings.worker_min_active_filepath(machine))
+    max_workers = atomic_counter.fetch(settings.worker_counter_filepath(machine))
+    min_updated = False
+    worker_states = []
+    for idx in range(min_workers, max_workers):
+        state = worker.get_state(machine, idx)
+        if state.running_state == worker.RunningState.WAITING or \
+           state.running_state == worker.RunningState.RUNNING:
+            worker_states.append((idx, state))
+            if not min_updated:
+                min_updated = True
+                if idx > min_workers:
+                    atomic_counter.reset(settings.worker_min_active_filepath(machine), idx)
+    return worker_states
+
+def get_all_job_states(machine):
+    max_jobs = atomic_counter.fetch(settings.job_counter_filepath(machine))
+    job_states = []
+    for idx in range(max_jobs):
+        state = job_manager.get_state(machine, idx)
+        job_states.append((idx, state))
+    return job_states
+
+def get_all_active_job_states(machine):
+    min_jobs = atomic_counter.fetch(settings.job_min_active_filepath(machine))
+    max_jobs = atomic_counter.fetch(settings.job_counter_filepath(machine))
+    min_updated = False
+    job_states = []
+    for idx in range(min_jobs, max_jobs):
+        state = job_manager.get_state(machine, idx)
+        if state.running_state == job_manager.RunningState.WAITING or \
+           state.running_state == job_manager.RunningState.RUNNING:
+            job_states.append((idx, state))
+            if not min_updated:
+                min_updated = True
+                if idx > min_jobs:
+                    atomic_counter.reset(settings.job_min_active_filepath(machine), idx)
+    return job_states
+
 def show_queues(machine, **opts):
     queues = sorted(os.listdir(settings.queue_dirpath(machine)))
     for q in queues:
         print(q, file=opts.get("stdout", sys.stdout))
 
 def show_workers(machine, show_all, queues, **opts):
-    max_workers = atomic_counter.fetch(settings.worker_counter_filepath(machine))
+    states = get_all_worker_states(machine) if show_all else get_all_active_worker_states(machine)
     table = []
-    for idx in range(max_workers):
-        state = worker.get_state(machine, idx)
-        if (show_all or state.running_state == worker.RunningState.WAITING or state.running_state == worker.RunningState.RUNNING) and \
-           (len(queues) == 0 or state.queue in queues):
+    for idx, state in states:
+        if (len(queues) == 0 or state.queue in queues):
             init_dt   = datetime.datetime.fromtimestamp(state.init_time)   if state.init_time   else None
             start_dt  = datetime.datetime.fromtimestamp(state.start_time)  if state.start_time  else None
             latest_dt = datetime.datetime.fromtimestamp(state.latest_time) if state.latest_time else None
@@ -29,12 +75,10 @@ def show_workers(machine, show_all, queues, **opts):
     print(tabulate.tabulate(table, headers=["ID", "State", "Queue", "Created Time", "Start Time", "Running Time"]), file=opts.get("stdout", sys.stdout))
 
 def show_jobs(machine, show_all, queues, names, **opts):
-    max_jobs = atomic_counter.fetch(settings.job_counter_filepath(machine))
+    states = get_all_job_states(machine) if show_all else get_all_active_job_states(machine)
     table = []
-    for idx in range(max_jobs):
-        state = job_manager.get_state(machine, idx)
-        if (show_all or state.running_state == job_manager.RunningState.WAITING or state.running_state == job_manager.RunningState.RUNNING) and \
-           (len(queues) == 0 or state.queue in queues) and \
+    for idx, state in states:
+        if (len(queues) == 0 or state.queue in queues) and \
            (len(names) == 0 or state.name in names):
             init_dt   = datetime.datetime.fromtimestamp(state.init_time)   if state.init_time   else None
             start_dt  = datetime.datetime.fromtimestamp(state.start_time)  if state.start_time  else None
