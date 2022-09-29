@@ -125,13 +125,13 @@ def batch_dependencies(path, batch_name, machine):
     deps.update(parse_dependencies(dict_get(batch(path, batch_name), "depends", default=dict()), machine))
     return deps
 
-def batch_build(path, batch_name):
+def batch_build(path, batch_name, machine):
     build_conf = build(path)
     build_conf.update(dict_get(batch(path, batch_name), "build", default=dict()))
     build_conf.update(script=wrap_list(dict_get(build_conf, "script", default=[])))
     return build_conf
 
-def batch_run(path, batch_name):
+def batch_run(path, batch_name, machine):
     run_conf = run(path)
     run_conf.update(dict_get(batch(path, batch_name), "run", default=dict()))
     run_conf.update(script=wrap_list(dict_get(run_conf, "script", default=[])))

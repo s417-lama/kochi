@@ -2,13 +2,18 @@ import os
 import sys
 import subprocess
 import shutil
+import re
+import string
+import itertools
 import pickle
 import base64
 import contextlib
 import pathlib
 import urllib
+import graphlib
 import textwrap
 import pexpect
+import click
 
 def decorate_command(commands, **opts):
     cmds = ["export {}=\"{}\"".format(k, v) for k, v in opts.get("env").items() if v] if opts.get("env") else []
@@ -119,3 +124,65 @@ def get_ip_address_candidates():
 
 def ensure_dir_exists(filepath):
     os.makedirs(os.path.dirname(filepath), exist_ok=True)
+
+# params
+# -----------------------------------------------------------------------------
+
+def param_eval(value):
+    if not hasattr(param_eval, "regexp"):
+        backtick = re.escape("`")
+        exppattern = r"[^{}]+".format(backtick)
+        pattern = r"{backtick}({exp}){backtick}".format(backtick=backtick, exp=exppattern)
+        param_eval.regexp = re.compile(pattern, re.IGNORECASE | re.VERBOSE)
+    if isinstance(value, str):
+        substitutes = [str(eval(exp)) for exp in param_eval.regexp.findall(value)]
+        for s in substitutes:
+            value = param_eval.regexp.sub(s, value, 1)
+    return value
+
+def param_substitute(params):
+    if not hasattr(param_substitute, "regexp"):
+        # The regexp was mostly copied from Python 3.10 implementation of string.Template
+        delim = re.escape("$")
+        idpattern = r"(?a:[_a-z][_a-z0-9]*)"
+        pattern = r"""
+        {delim}(?:
+          {delim}    | # Escape sequence of two delimiters
+          ({id})     | # delimiter and a Python identifier
+          {{({id})}} | # delimiter and a braced identifier
+        )
+        """.format(delim=delim, id=idpattern)
+        param_substitute.regexp = re.compile(pattern, re.IGNORECASE | re.VERBOSE)
+    ts = graphlib.TopologicalSorter()
+    for k, v in params.items():
+        depend_params = []
+        if isinstance(v, str):
+            for dep in set(sum(param_substitute.regexp.findall(v), ())):
+                if k == dep:
+                    click.secho("Param '{}' cannot depend on itself.".format(k), fg="red", file=sys.stderr)
+                    exit(1)
+                if dep:
+                    depend_params.append(dep)
+        ts.add(k, *depend_params)
+    try:
+        keys_sorted = list(ts.static_order())
+    except graphlib.CycleError as e:
+        cycle = " -> ".join(e.args[1])
+        click.secho("Parameter dependencies have at least one cycle ({}).".format(cycle), fg="red", file=sys.stderr)
+        exit(1)
+    new_params = params.copy()
+    for k in keys_sorted:
+        v = new_params[k]
+        if isinstance(v, str):
+            v = string.Template(v).substitute(new_params)
+        new_params[k] = param_eval(v)
+    return new_params
+
+def param_product(params):
+    param_pairs = []
+    for k, vl in params.items():
+        if isinstance(vl, list):
+            param_pairs.append([(k, v) for v in vl])
+        else:
+            param_pairs.append([(k, vl)])
+    return [dict(d) for d in itertools.product(*param_pairs)]

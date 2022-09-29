@@ -4,7 +4,6 @@ import subprocess
 import sys
 import string
 import functools
-import itertools
 import collections
 import pathlib
 import click
@@ -182,7 +181,7 @@ def create_job(machine, queue, with_context, dependency, name, git_remote, comma
         run_conf = job_config.run(commands[0])
         deps = job_config.default_dependencies(commands[0], machine)
         deps.update(parse_dependencies(dependency))
-        params = job_manager.parse_params(commands, machine)
+        params = util.param_substitute(job_manager.parse_params(commands, machine))
         if not name:
             name = string.Template(job_config.default_name(commands[0], machine)).substitute(params)
         if not queue:
@@ -312,15 +311,6 @@ def launch_reverse_shell_cmd(host, port, token):
 # batch
 # -----------------------------------------------------------------------------
 
-def param_product(params):
-    param_pairs = []
-    for k, vl in params.items():
-        if isinstance(vl, list):
-            param_pairs.append([(k, v) for v in vl])
-        else:
-            param_pairs.append([(k, vl)])
-    return [dict(d) for d in itertools.product(*param_pairs)]
-
 @cli.command(name="batch")
 @machine_option
 @click.argument("job_config_file", required=True)
@@ -353,7 +343,8 @@ def batch_cmd(click_ctx, machine, job_config_file, batch_name, git_remote):
         project.sync(machine)
     ctx = context.create(git_remote)
 
-    for p in param_product(params):
+    for p in util.param_product(params):
+        p = util.param_substitute(p)
         for dup in range(duplicates):
             p.update(duplicate=dup)
             queue = queue_name_template.substitute(p)

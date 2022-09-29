@@ -16,5 +16,6 @@ setup(
         "psutil",
         "tabulate",
         "pexpect",
+        "graphlib-backport", # not needed for Python >= 3.9
     ],
 )
