@@ -36,7 +36,7 @@ def run_on_login_node(machine, script, **opts):
     util.run_command_ssh_interactive(config.login_host(machine), config.load_env_login_script(machine) + [script],
                                      cwd=config.work_dir(machine), env=opts.get("env"))
 
-machine_option = click.option("-m", "--machine", metavar="MACHINE", required=True, help="Machine name",
+machine_option = click.option("-m", "--machine", metavar="MACHINE", required=True, help="Machine name", envvar="KOCHI_DEFAULT_MACHINE",
                               callback=lambda _c, _p, v: (ensure_init_machine(v), v)[-1])
 
 on_machine_option = click.option("--on-machine", is_flag=True, default=False, hidden=True)
