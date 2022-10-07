@@ -227,7 +227,7 @@ def enqueue_cmd(click_ctx, machine, queue, with_context, dependency, name, git_r
     """
     job = create_job(machine, queue, with_context, dependency, name, git_remote, commands)
     if machine == "local":
-        click_ctx.invoke(enqueue_aux_cmd, job_serialized=util.serialize(job))
+        click_ctx.invoke(enqueue_aux_cmd, machine=machine, job_serialized=util.serialize(job))
     else:
         run_on_login_node(machine, "kochi enqueue_aux -m {} {}".format(machine, util.serialize(job)))
 
@@ -264,7 +264,7 @@ def interact_cmd(click_ctx, machine, queue, with_context, dependency, git_remote
     job = create_job(machine, queue, with_context, dependency, "interact", git_remote, commands)
     if machine == "local":
         args = InteractArgs(job, None, None)
-        click_ctx.invoke(interact_aux_cmd, args_serialized=util.serialize(args))
+        click_ctx.invoke(interact_aux_cmd, machine=machine, args_serialized=util.serialize(args))
     else:
         with ssh_forward.reverse_forward(config.login_host(machine)) as remote_port:
             args = InteractArgs(job, remote_port, forward_port)
@@ -352,7 +352,7 @@ def batch_cmd(click_ctx, machine, job_config_file, batch_name, git_remote):
             job = job_queue.Job(job_name, machine, queue, rec_deps, ctx, p,
                                 artifacts_conf, activate_script, build_conf, run_conf)
             if machine == "local":
-                click_ctx.invoke(enqueue_aux_cmd, job_serialized=util.serialize(job))
+                click_ctx.invoke(enqueue_aux_cmd, machine=machine, job_serialized=util.serialize(job))
             else:
                 run_on_login_node(machine, "kochi enqueue_aux -m {} {}".format(machine, util.serialize(job)))
 
@@ -462,7 +462,7 @@ def install_cmd(click_ctx, machine, dependency, queue):
         args = installer.InstallConf(project_name, dep, recipe, on_machine, rec_deps, ctx,
                                      config.recipe_envs(dep, recipe), activate_script, config.recipe_script(dep, recipe))
         if machine == "local":
-            click_ctx.invoke(install_aux_cmd, args_serialized=util.serialize(args))
+            click_ctx.invoke(install_aux_cmd, machine=machine, args_serialized=util.serialize(args))
         else:
             install_cmd = "kochi install_aux -m {} {}".format(machine, util.serialize(args))
             if on_machine:

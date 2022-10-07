@@ -93,10 +93,18 @@ def recipes(d):
     return dict_get(dependency(d), "recipes")
 
 def recipe_list(d):
-    return [k for k in recipes(d)]
+    return [rc["name"] for rc in recipes(d)]
 
 def recipe(d, r):
-    return dict_get(recipes(d), r)
+    rcs = [rc for rc in recipes(d) if rc["name"] == r]
+    if len(rcs) == 0:
+        print("Recipe {}:{} was not found (config file: {})".format(d, r, settings.config_filepath()), file=sys.stderr)
+        exit(1)
+    elif len(rcs) > 1:
+        print("Multiple definitions of recipe {}:{} were found (config file: {})".format(d, r, settings.config_filepath()), file=sys.stderr)
+        exit(1)
+    else:
+        return rcs[0]
 
 def recipe_envs(d, r):
     envs = dict()
