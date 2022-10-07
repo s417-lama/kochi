@@ -73,6 +73,7 @@ def on_finish_job(job, worker_id, machine, running_state):
 
 def run_job(job, worker_id, machine, queue_name, exec_build, stdout):
     build_success = False
+    run_success = False
     dep_envs = installer.deps_env(job.context.project, machine, job.dependencies) if job.context else dict()
     with context.context(job.context):
         with util.tee(settings.job_log_filepath(machine, job.id), stdout=stdout) as tee:
@@ -108,9 +109,6 @@ def run_job(job, worker_id, machine, queue_name, exec_build, stdout):
                     # run
                     subprocess.run("\n".join(job.activate_script + run_script), env=run_env, shell=True, executable="/bin/bash",
                                    stdout=tee.stdin, stderr=tee.stdin, check=True)
-                    if job.context and len(job.artifacts_conf) > 0:
-                        print(click.style("Saving artifacts...", fg=color), file=tee.stdin, flush=True)
-                        artifact.save(machine, worker_id, job)
             except KeyboardInterrupt:
                 if job_canceler.check_canceled(machine, job.id):
                     print(click.style("Kochi job {} (ID={}) canceled.".format(job.name, job.id), fg="red"), file=tee.stdin, flush=True)
@@ -123,8 +121,14 @@ def run_job(job, worker_id, machine, queue_name, exec_build, stdout):
                 on_finish_job(job, worker_id, machine, RunningState.ABORTED)
             else:
                 on_finish_job(job, worker_id, machine, RunningState.TERMINATED)
+                run_success = True
             print(click.style("-" * 80, fg=color), file=tee.stdin, flush=True)
-            return build_success
+            if run_success and job.context and len(job.artifacts_conf) > 0:
+                print(click.style("Saving artifacts...", fg=color), file=tee.stdin, flush=True)
+        # after tee exists
+        if run_success and job.context and len(job.artifacts_conf) > 0:
+            artifact.save(machine, worker_id, job)
+    return build_success
 
 def cancel(machine, job_id):
     job_canceler.cancel(machine, job_id)
