@@ -29,9 +29,9 @@ def ensure_init(machine, project_name, is_artifact=False):
     else:
         is_artifact_opt = "--is-artifact" if is_artifact else ""
         try:
-            return run_on_login_node(machine, "kochi show path project {} {}".format(is_artifact_opt, project_name))
+            return run_on_login_node(machine, "kochi show path project -m local {} {}".format(is_artifact_opt, project_name))
         except subprocess.CalledProcessError:
-            remote_git_path = run_on_login_node(machine, "kochi show path project -f {} {}".format(is_artifact_opt, project_name))
+            remote_git_path = run_on_login_node(machine, "kochi show path project -m local -f {} {}".format(is_artifact_opt, project_name))
             run_on_login_node(machine, "[ -d {0} ] || git init -q --bare {0}".format(remote_git_path))
             return remote_git_path
 
