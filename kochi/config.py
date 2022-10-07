@@ -126,6 +126,9 @@ def recipe_branch(d, r):
 def recipe_commit_hash(d, r):
     return dict_get(recipe(d, r), "commit_hash", default=None) or dict_get(dependency(d), "commit_hash", default=None)
 
+def recipe_on_machine(d, r):
+    return dict_get(recipe(d, r), "on_machine", default=None) or dict_get(dependency(d), "on_machine", default=False)
+
 def recipe_dependencies(d, r, machine):
     dep_conf = dict_get(recipe(d, r), "depends", default=None) or dict_get(dependency(d), "depends", default=[])
     deps = collections.OrderedDict()

@@ -14,8 +14,8 @@ from . import config
 from . import project
 from . import context
 
-InstallConf = namedtuple("InstallConf", ["project", "dependency", "recipe", "recipe_dependencies", "context", "envs", "activate_script", "script"])
-state_fields = ["project", "dependency", "recipe", "recipe_dependency_states", "context", "envs", "activate_script", "script", "installed_time", "commit_hash"]
+InstallConf = namedtuple("InstallConf", ["project", "dependency", "recipe", "on_machine", "recipe_dependencies", "context", "envs", "activate_script", "script"])
+state_fields = ["project", "dependency", "recipe", "on_machine", "recipe_dependency_states", "context", "envs", "activate_script", "script", "installed_time", "commit_hash"]
 State = namedtuple("State", state_fields)
 
 def get_install_context(machine, dep, recipe):
@@ -31,11 +31,12 @@ def get_install_context(machine, dep, recipe):
     else:
         return None
 
-def on_complete(conf, machine):
+def on_complete(conf, machine, env):
     recipe_dependency_states = [get_state(conf.project, d, r, machine) for d, r in conf.recipe_dependencies.items()]
     commit_hash = subprocess.run(["git", "rev-parse", conf.context.reference], stdout=subprocess.PIPE, encoding="utf-8", check=True).stdout.strip() if conf.context else None
     with open(settings.project_dep_install_state_filepath(conf.project, machine, conf.dependency, conf.recipe), "w") as f:
-        state = State(conf.project, conf.dependency, conf.recipe, recipe_dependency_states, conf.context, conf.envs, conf.activate_script, conf.script, time.time(), commit_hash)
+        state = State(conf.project, conf.dependency, conf.recipe, conf.on_machine, recipe_dependency_states,
+                      conf.context, env, conf.activate_script, conf.script, time.time(), commit_hash)
         f.write(util.serialize(state))
 
 def dep_env(project_name, machine, dep, recipe):
@@ -89,7 +90,8 @@ def install(conf, machine):
         with context.context(conf.context):
             with util.tee(settings.project_dep_install_log_filepath(conf.project, machine, conf.dependency, conf.recipe)) as tee:
                 color = "magenta"
-                print(click.style("Kochi installation for {}:{} started on machine {}.".format(conf.dependency, conf.recipe, machine), fg=color), file=tee.stdin, flush=True)
+                where_str = "on machine {}".format(machine) if conf.on_machine else "on login node for machine {}".format(machine)
+                print(click.style("Kochi installation for {}:{} started {}.".format(conf.dependency, conf.recipe, where_str), fg=color), file=tee.stdin, flush=True)
                 print(click.style("*" * 80, fg=color), file=tee.stdin, flush=True)
                 env = os.environ.copy()
                 env["KOCHI_MACHINE"] = machine
@@ -104,7 +106,7 @@ def install(conf, machine):
                 except BaseException as e:
                     print(click.style("Kochi installation for {}:{} failed: {}".format(conf.dependency, conf.recipe, str(e)), fg="red"), file=tee.stdin, flush=True)
                 else:
-                    on_complete(conf, machine)
+                    on_complete(conf, machine, env)
                 print(click.style("*" * 80, fg=color), file=tee.stdin, flush=True)
 
 def get_state(project_name, dependency, recipe, machine):
@@ -119,6 +121,7 @@ def show_detail(state, indent=0, **opts):
     table.append(["Dependency Name", state.dependency])
     table.append(["Recipe Name", state.recipe])
     table.append(["Installed Time", datetime.datetime.fromtimestamp(state.installed_time)])
+    table.append(["Executed on", "compute node" if state.on_machine else "login node"])
     table.append(["Context Ref", state.context.reference if state.context else None])
     table.append(["Context Commit Hash", state.commit_hash])
     table.append(["Context Diff", state.context.diff if state.context else None])

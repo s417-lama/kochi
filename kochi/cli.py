@@ -446,8 +446,9 @@ def work_cmd(machine, queue, blocking, worker_id):
 @cli.command(name="install")
 @machine_option
 @dependency_option
+@click.option("-q", "--queue", metavar="QUEUE", help="Queue to which installation jobs are submitted (only when on_machine = true)")
 @click.pass_context
-def install_cmd(click_ctx, machine, dependency):
+def install_cmd(click_ctx, machine, dependency, queue):
     """
     Install projects that are depended on by this repository on MACHINE.
     """
@@ -455,14 +456,23 @@ def install_cmd(click_ctx, machine, dependency):
     for dep, recipe in parse_dependencies(dependency).items():
         ctx = installer.get_install_context(machine, dep, recipe)
         recipe_deps = config.recipe_dependencies(dep, recipe, machine)
+        on_machine = config.recipe_on_machine(dep, recipe)
         rec_deps = get_dependencies_recursively(recipe_deps, machine)
         activate_script = sum([config.recipe_activate_script(d, r) for d, r in rec_deps.items()], [])
-        args = installer.InstallConf(project_name, dep, recipe, rec_deps, ctx,
+        args = installer.InstallConf(project_name, dep, recipe, on_machine, rec_deps, ctx,
                                      config.recipe_envs(dep, recipe), activate_script, config.recipe_script(dep, recipe))
         if machine == "local":
             click_ctx.invoke(install_aux_cmd, args_serialized=util.serialize(args))
         else:
-            run_on_login_node(machine, "kochi install_aux -m {} {}".format(machine, util.serialize(args)))
+            install_cmd = "kochi install_aux -m {} {}".format(machine, util.serialize(args))
+            if on_machine:
+                if not queue:
+                    raise click.UsageError("Please specify --queue (-q) option to install {}:{} (on_machine = true)".format(dep, recipe))
+                job = job_queue.Job("KOCHI-INSTALL", machine, queue, rec_deps, ctx, dict(),
+                                    [], activate_script, dict(), dict(script=[install_cmd]))
+                run_on_login_node(machine, "kochi enqueue_aux -m {} {}".format(machine, util.serialize(job)))
+            else:
+                run_on_login_node(machine, install_cmd)
 
 @cli.command(name="install_aux", hidden=True)
 @machine_option
