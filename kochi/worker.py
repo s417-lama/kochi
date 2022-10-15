@@ -33,6 +33,9 @@ def worker_loop(idx, queue_name, blocking, machine, stdout):
                 build_success = job_manager.run_job(job, idx, machine, queue_name, exec_build, stdout)
                 if build_success:
                     prev_job_build_state = build_state
+                elif exec_build:
+                    # The build environment can be in an inconsistent state
+                    prev_job_build_state = dict()
         elif blocking:
             time.sleep(0.1)
         else:
