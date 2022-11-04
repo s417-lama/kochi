@@ -283,7 +283,7 @@ def interact_aux_cmd(machine, args_serialized):
         commands = []
         ip_address_candidates = ["127.0.0.1"] if machine == "local" else util.get_ip_address_candidates()
         for ip in ip_address_candidates:
-            commands.append("timeout 0.1 nc -z {0} {1} &&" \
+            commands.append("timeout 0.3 nc -z {0} {1} &&" \
                             "echo 'Connecting to {0}:{1} to forward the control of an interactive shell...' &&" \
                             "kochi launch_reverse_shell {0} {1} {2} &&" \
                             "echo 'Connection lost.' &&" \
