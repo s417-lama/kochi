@@ -184,7 +184,8 @@ def get_dependency_states(job, machine):
 def build_state(job, machine):
     dep_states = get_dependency_states(job, machine)
     build_params = filter_params(job.params, job.build_conf.get("depend_params", []))
-    return dict(dependency_states=dep_states, context=job.context, params=build_params)
+    build_script = job.build_conf.get("script", [])
+    return dict(dependency_states=dep_states, context=job.context, params=build_params, build_script=build_script)
 
 def init(job, machine, queue_name):
     with open(settings.job_state_filepath(machine, job.id), "w") as f:
