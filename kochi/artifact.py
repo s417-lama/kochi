@@ -57,7 +57,7 @@ def ensure_init_worker(machine, worker_id, ctx):
     if not os.path.isdir(dirpath):
         git_remote = ctx.git_remote if ctx.git_remote else settings.project_artifact_git_dirpath(ctx.project)
         branch = settings.artifacts_branch(machine)
-        subprocess.run(["git", "clone", "--recursive", "-q", "-b", branch, git_remote, dirpath], check=True)
+        subprocess.run(["git", "clone", "--recursive", "-q", "--depth=1", "-b", branch, "file://" + git_remote, dirpath], check=True)
     os.makedirs(artifact_path(machine, worker_id, ctx.project, "."), exist_ok=True)
 
 def get_artifact_worktree():
