@@ -532,11 +532,13 @@ def show_workers_cmd(machine, all, queue):
     stats.show_workers(machine, all, queue)
 
 @on_machine_cmd(show, "jobs")
-@click.option("-a", "--all", is_flag=True, default=False, help="Show all jobs including terminated ones.")
+@click.option("-t", "--show-terminated", is_flag=True, default=False, help="Show jobs including terminated ones.")
+@click.option("-l", "--limit", metavar="LIMIT", type=int, default=100, help="Maximum number of jobs to show.")
+@click.option("-a", "--all", is_flag=True, default=False, help="Show all jobs ignoring LIMIT.")
 @click.option("-q", "--queue", multiple=True, help="Queues for which jobs were submitted. Defaults to all queues.")
 @click.option("-n", "--name", multiple=True, help="Job names to be queried. Defaults to all names.")
-def show_jobs_cmd(machine, all, queue, name):
-    stats.show_jobs(machine, all, queue, name)
+def show_jobs_cmd(machine, show_terminated, limit, all, queue, name):
+    stats.show_jobs(machine, show_terminated, limit, all, queue, name)
 
 @on_machine_cmd(show, "job")
 @click.argument("job_id", required=True, type=int)

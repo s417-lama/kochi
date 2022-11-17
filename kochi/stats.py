@@ -33,17 +33,21 @@ def get_all_active_worker_states(machine):
                     atomic_counter.reset(settings.worker_min_active_filepath(machine), idx)
     return worker_states
 
-def get_all_job_states(machine):
+def get_all_job_states(machine, limit, show_all):
     max_jobs = atomic_counter.fetch(settings.job_counter_filepath(machine))
+    if show_all:
+        limit = max_jobs
     job_states = []
-    for idx in range(max_jobs):
+    for idx in range(max(0, max_jobs - limit), max_jobs):
         state = job_manager.get_state(machine, idx)
         job_states.append((idx, state))
     return job_states
 
-def get_all_active_job_states(machine):
+def get_all_active_job_states(machine, limit, show_all):
     min_jobs = atomic_counter.fetch(settings.job_min_active_filepath(machine))
     max_jobs = atomic_counter.fetch(settings.job_counter_filepath(machine))
+    if show_all:
+        limit = max_jobs - min_jobs
     min_updated = False
     job_states = []
     for idx in range(min_jobs, max_jobs):
@@ -55,7 +59,7 @@ def get_all_active_job_states(machine):
                 min_updated = True
                 if idx > min_jobs:
                     atomic_counter.reset(settings.job_min_active_filepath(machine), idx)
-    return job_states
+    return job_states[-limit:]
 
 def show_queues(machine, **opts):
     queues = sorted(os.listdir(settings.queue_dirpath(machine)))
@@ -74,8 +78,8 @@ def show_workers(machine, show_all, queues, **opts):
                           latest_dt - start_dt if start_dt and latest_dt else None])
     print(tabulate.tabulate(table, headers=["ID", "State", "Queue", "Created Time", "Start Time", "Running Time"]), file=opts.get("stdout", sys.stdout))
 
-def show_jobs(machine, show_all, queues, names, **opts):
-    states = get_all_job_states(machine) if show_all else get_all_active_job_states(machine)
+def show_jobs(machine, show_terminated, limit, show_all, queues, names, **opts):
+    states = get_all_job_states(machine, limit, show_all) if show_terminated else get_all_active_job_states(machine, limit, show_all)
     table = []
     for idx, state in states:
         if (len(queues) == 0 or state.queue in queues) and \
