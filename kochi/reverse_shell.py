@@ -107,7 +107,7 @@ def launch_shell(host, port, token):
         s.send(token.encode())
         pid, fd = pty.fork()
         if pid == 0:
-            argv = [os.environ.get("SHELL", "/bin/bash")]
+            argv = ["/bin/bash"]
             os.execlp(argv[0], *argv)
         t = threading.Thread(target=watch_window_size, args=(fd,))
         t.start()
