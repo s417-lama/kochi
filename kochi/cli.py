@@ -367,7 +367,7 @@ def cancel_cmd(machine, all, job_ids):
     Cancel jobs of JOB_IDS on MACHINE.
     """
     if all:
-        job_states = stats.get_all_active_job_states(machine)
+        job_states = stats.get_all_active_job_states(machine, 0, True)
     else:
         job_states = []
         for job_id in job_ids:
