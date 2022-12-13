@@ -115,6 +115,7 @@ def sshd_config():
     return util.dedent("""
         HostKey {}
         AuthorizedKeysFile {}
+        StrictModes no
         """.format(sshd_hostkey_filepath(), sshd_authorized_keys_filepath()))
 
 def sshd_config_filepath():

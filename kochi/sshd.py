@@ -64,6 +64,7 @@ def ensure_init():
         with open(settings.sshd_authorized_keys_filepath(), "w") as fw:
             with open(settings.sshd_clientpubkey_filepath(), "r") as fr:
                 fw.write(fr.read())
+        os.chmod(settings.sshd_authorized_keys_filepath(), 0o600)
     if not os.path.isfile(settings.sshd_config_filepath()):
         with open(settings.sshd_config_filepath(), "w") as f:
             f.write(settings.sshd_config())
