@@ -79,7 +79,7 @@ def get_state(filepath, **opts):
         with open(filepath, "r") as f:
             state = util.deserialize(f.read())
         if state.running_state == RunningState.RUNNING:
-            running_state = RunningState.TERMINATED if state.latest_time + opts.get("margin", 5) < current_timestamp() else RunningState.RUNNING
+            running_state = RunningState.TERMINATED if state.latest_time + opts.get("margin", 10) < current_timestamp() else RunningState.RUNNING
             return update_state(state, running_state=running_state)
         else:
             return state
