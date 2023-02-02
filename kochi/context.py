@@ -27,20 +27,23 @@ def create_with_commit_hash(commit_hash, git_remote):
     return Context(project_name, git_remote, commit_hash, None)
 
 def create_for_recipe(dep, recipe, git_remote):
-    use_current_state = config.recipe_current_state(dep, recipe)
-    branch = config.recipe_branch(dep, recipe)
+    mirror      = config.recipe_mirror(dep, recipe)
+    mirror_dir  = config.recipe_mirror_dir(dep, recipe)
+    branch      = config.recipe_branch(dep, recipe)
     commit_hash = config.recipe_commit_hash(dep, recipe)
-    if branch and commit_hash:
-        print("'branch' and 'commit_hash' cannot coexist in recipe config.", file=sys.stderr)
-        exit(1)
-    if use_current_state:
-        return create(git_remote)
+    if mirror:
+        if not mirror_dir:
+            print("Please specify 'mirror_dir' if 'mirror' is True in recipe config.", file=sys.stderr)
+            exit(1)
+        with util.cwd(util.toplevel_git_dirpath()):
+            with util.cwd(mirror_dir):
+                return create(git_remote)
     elif branch:
         return create_with_branch(branch, git_remote)
     elif commit_hash:
         return create_with_commit_hash(commit_hash, git_remote)
     else:
-        print("Please specify any of 'current_state', 'branch', and 'commit_hash' option in recipe config.", file=sys.stderr)
+        print("Please specify any of 'mirror', 'branch', and 'commit_hash' option in recipe config.", file=sys.stderr)
         exit(1)
 
 def deploy(ctx):

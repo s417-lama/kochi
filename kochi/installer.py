@@ -21,13 +21,13 @@ State = namedtuple("State", state_fields)
 def get_install_context(machine, dep, recipe):
     git_path = config.recipe_git(dep, recipe)
     if git_path:
-        if util.is_git_remote(git_path):
-            return context.create_for_recipe(dep, recipe, git_path)
-        else:
+        if not util.is_git_remote(git_path):
             with util.cwd(util.toplevel_git_dirpath()):
                 with util.cwd(git_path):
                     project.sync(machine)
-                    return context.create_for_recipe(dep, recipe, None)
+            return context.create_for_recipe(dep, recipe, None)
+        else:
+            return context.create_for_recipe(dep, recipe, git_path)
     else:
         return None
 

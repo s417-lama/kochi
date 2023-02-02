@@ -125,8 +125,11 @@ def recipe_script(d, r):
 def recipe_git(d, r):
     return dict_get(recipe(d, r), "git", default=None) or dict_get(dependency(d), "git", default=None)
 
-def recipe_current_state(d, r):
-    return dict_get(recipe(d, r), "current_state", default=None) or dict_get(dependency(d), "current_state", default=False)
+def recipe_mirror(d, r):
+    return dict_get(recipe(d, r), "mirror", default=None) or dict_get(dependency(d), "mirror", default=False)
+
+def recipe_mirror_dir(d, r):
+    return dict_get(recipe(d, r), "mirror_dir", default=None) or dict_get(dependency(d), "mirror_dir", default=None)
 
 def recipe_branch(d, r):
     return dict_get(recipe(d, r), "branch", default=None) or dict_get(dependency(d), "branch", default=None)
