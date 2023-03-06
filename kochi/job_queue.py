@@ -8,14 +8,14 @@ from . import locked_queue
 from . import atomic_counter
 from . import installer
 
-Job = namedtuple("Job", ["name", "machine", "queue", "dependencies", "context", "params", "artifacts_conf", "activate_script", "build_conf", "run_conf"])
-JobEnqueued = namedtuple("JobEnqueued", ["id", "name", "dependencies", "context", "params", "artifacts_conf", "activate_script", "build_conf", "run_conf"])
+Job = namedtuple("Job", ["name", "machine", "project_name", "queue", "dependencies", "context", "params", "artifacts_conf", "activate_script", "build_conf", "run_conf"])
+JobEnqueued = namedtuple("JobEnqueued", ["id", "name", "project_name", "dependencies", "context", "params", "artifacts_conf", "activate_script", "build_conf", "run_conf"])
 
 def push(job):
     if job.context:
-        installer.check_dependencies(job.context.project, job.machine, job.dependencies)
+        installer.check_dependencies(job.project_name, job.machine, job.dependencies)
     idx = atomic_counter.fetch_and_add(settings.job_counter_filepath(job.machine), 1)
-    job_enqueued = JobEnqueued(idx, job.name, job.dependencies, job.context, job.params, job.artifacts_conf, job.activate_script, job.build_conf, job.run_conf)
+    job_enqueued = JobEnqueued(idx, job.name, job.project_name, job.dependencies, job.context, job.params, job.artifacts_conf, job.activate_script, job.build_conf, job.run_conf)
     job_manager.init(job_enqueued, job.machine, job.queue)
     locked_queue.push(settings.queue_filepath(job.machine, job.queue), util.serialize(job_enqueued))
     return job_enqueued
@@ -38,9 +38,9 @@ if __name__ == "__main__":
     $ python3 -m kochi.job_queue
     """
     queue_name = "test"
-    push(Job("test_job1", "local", queue_name, ["aaa"]       , "context", dict(), [], "", dict(), dict(script=["run1"])))
-    push(Job("test_job2", "local", queue_name, ["bbb"]       , "context", dict(), [], "", dict(), dict(script=["run2"])))
-    push(Job("test_job3", "local", queue_name, ["ccc", "ddd"], "context", dict(), [], "", dict(), dict(script=["run3"])))
+    push(Job("test_job1", "local", "proj", queue_name, ["aaa"]       , "context", dict(), [], "", dict(), dict(script=["run1"])))
+    push(Job("test_job2", "local", "proj", queue_name, ["bbb"]       , "context", dict(), [], "", dict(), dict(script=["run2"])))
+    push(Job("test_job3", "local", "proj", queue_name, ["ccc", "ddd"], "context", dict(), [], "", dict(), dict(script=["run3"])))
     print(pop(queue_name))
     print(pop(queue_name))
     print(pop(queue_name))

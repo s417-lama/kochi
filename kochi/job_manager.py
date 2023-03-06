@@ -74,7 +74,7 @@ def on_finish_job(job, worker_id, machine, running_state):
 def run_job(job, worker_id, machine, queue_name, exec_build, stdout):
     build_success = False
     run_success = False
-    dep_envs = installer.deps_env(job.context.project, machine, job.dependencies) if job.context else dict()
+    dep_envs = installer.deps_env(job.project_name, machine, job.dependencies) if job.context else dict()
     with context.context(job.context):
         with util.tee(settings.job_log_filepath(machine, job.id), stdout=stdout) as tee:
             color = "blue"
@@ -179,7 +179,7 @@ def filter_params(params, param_list):
     return dict(filter(lambda x: x[0] in param_list, params.items()))
 
 def get_dependency_states(job, machine):
-    return [installer.get_state(job.context.project, d, r, machine) for d, r in job.dependencies.items()]
+    return [installer.get_state(job.project_name, d, r, machine) for d, r in job.dependencies.items()]
 
 def build_state(job, machine):
     dep_states = get_dependency_states(job, machine)

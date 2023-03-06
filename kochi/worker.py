@@ -116,7 +116,7 @@ if __name__ == "__main__":
             with open(test_filename, "w+") as f:
                 print("File for job {}".format(i), file=f)
             ctx = context.create(repo_path)
-            job_queue.push(job_queue.Job("test_job_{}".format(i), "local", queue_name, [], ctx, "sleep 0.1; cat {}".format(test_filename)))
+            job_queue.push(job_queue.Job("test_job_{}".format(i), "local", "proj", queue_name, [], ctx, "sleep 0.1; cat {}".format(test_filename)))
     os.remove(test_filename)
     worker_id = init("local", queue_name, -1)
     start(queue_name, False, worker_id, "local")

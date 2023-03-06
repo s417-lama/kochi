@@ -15,7 +15,7 @@ def artifact_path(machine, worker_id, project_name, relative_path):
 def save(machine, worker_id, job):
     ensure_init_worker(machine, worker_id, job.context)
     for artifact_conf in job.artifacts_conf:
-        dest_path = string.Template(artifact_path(machine, worker_id, job.context.project, artifact_conf["dest"])).substitute(job.params)
+        dest_path = string.Template(artifact_path(machine, worker_id, job.project_name, artifact_conf["dest"])).substitute(job.params)
         util.ensure_dir_exists(dest_path)
         if artifact_conf["type"] == "stdout":
             shutil.copy2(settings.job_log_filepath(machine, job.id), dest_path)

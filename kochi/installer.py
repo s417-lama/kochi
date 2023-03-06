@@ -75,7 +75,7 @@ def check_dependencies(project_name, machine, deps):
     """
     current_dep_states = {d: get_state(project_name, d, r, machine) for d, r in deps.items()}
     for d, ds in current_dep_states.items():
-        print("Checking dependencies for {}:{}...".format(d, ds.recipe))
+        print("Checking dependencies for {}:{}...".format(d, ds.recipe), flush=True)
         check_dependencies_aux(project_name, machine, current_dep_states, ds)
 
 def install(conf, machine):
