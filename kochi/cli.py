@@ -176,7 +176,6 @@ def get_dependencies_recursively(deps, machine):
 
 def create_job(machine, queue, with_context, dependency, name, git_remote, commands):
     if len(commands) > 0 and pathlib.Path(commands[0]).suffix in [".yaml", ".yml"]:
-        project_name = project.project_name_of_cwd()
         with_context = True
         build_conf = job_config.build(commands[0])
         run_conf = job_config.run(commands[0])
@@ -188,7 +187,6 @@ def create_job(machine, queue, with_context, dependency, name, git_remote, comma
         if not queue:
             queue = string.Template(job_config.default_queue(commands[0], machine)).substitute(params)
     else:
-        project_name = "ANON"
         deps = parse_dependencies(dependency)
         params = dict()
         build_conf = dict()
@@ -199,11 +197,18 @@ def create_job(machine, queue, with_context, dependency, name, git_remote, comma
     if not queue:
         raise click.UsageError("Please specify --queue (-q) option.")
 
-    if with_context and not util.is_inside_git_dir():
-        raise click.UsageError("--with-context (-c) option must be used inside a git directory.")
-    if with_context and not git_remote:
-        project.sync(machine)
-    ctx = context.create(git_remote) if with_context else None
+    if with_context:
+        if not util.is_inside_git_dir():
+            raise click.UsageError("--with-context (-c) option must be used inside a git directory.")
+        if not git_remote:
+            project.sync(machine)
+        ctx = context.create(git_remote)
+        project_name = project.project_name_of_cwd()
+    else:
+        ctx = None
+        project_name = "ANON"
+        if deps:
+            raise click.UsageError("--with-context (-c) option must be specified to set dependencies.")
 
     rec_deps = get_dependencies_recursively(deps, machine)
     activate_script = sum([config.recipe_activate_script(d, r) for d, r in rec_deps.items()], [])
