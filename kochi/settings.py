@@ -7,7 +7,7 @@ def root_path():
 
 def config_filepath():
     if util.is_inside_git_dir():
-        filepath = os.path.join(util.toplevel_git_dirpath(), ".kochi.yaml")
+        filepath = os.path.join(util.toplevel_git_dirpath(), "kochi.yaml")
     else:
         filepath = os.path.join(root_path(), "conf.yaml")
     return os.environ.get("KOCHI_CONF", filepath)
