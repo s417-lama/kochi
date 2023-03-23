@@ -97,7 +97,6 @@ def show_job_detail(machine, job_id, **opts):
     table.append(["Job ID", job_id])
     table.append(["Job Name", state.name])
     table.append(["Running State", str(state.running_state)])
-    table.append(["Project", state.project_name])
     table.append(["Queue", state.queue])
     init_dt   = datetime.datetime.fromtimestamp(state.init_time)   if state.init_time   else None
     start_dt  = datetime.datetime.fromtimestamp(state.start_time)  if state.start_time  else None
