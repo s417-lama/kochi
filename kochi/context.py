@@ -59,7 +59,7 @@ def context(ctx):
     if ctx:
         if not os.path.isdir(ctx.project):
             git_remote = ctx.git_remote if ctx.git_remote else settings.project_git_dirpath(ctx.project)
-            subprocess.run(["git", "clone", "--recursive", "-q", git_remote, ctx.project], check=True)
+            subprocess.run(["git", "clone", "-q", git_remote, ctx.project], check=True)
         with util.cwd(ctx.project):
             deploy(ctx)
             yield
