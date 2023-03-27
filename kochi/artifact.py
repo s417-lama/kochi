@@ -109,7 +109,7 @@ def sync(machine):
             subprocess.run(["git", "pull"], check=True)
         finally:
             subprocess.run(["git", "checkout", "-q", settings.artifacts_master_branch()], check=True)
-        subprocess.run(["git", "merge", "--no-edit", settings.artifacts_branch(machine)], check=True)
+        subprocess.run(["git", "merge", "-X", "theirs", "--no-edit", settings.artifacts_branch(machine)], check=True)
 
 def discard(machine):
     worktree_path = get_artifact_worktree()
