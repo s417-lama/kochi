@@ -144,7 +144,8 @@ def param_substitute(params):
     if not hasattr(param_substitute, "regexp"):
         # The regexp was mostly copied from Python 3.10 implementation of string.Template
         delim = re.escape("$")
-        idpattern = r"(?a:[_a-z][_a-z0-9]*)"
+        # idpattern = r"(?a:[_a-z][_a-z0-9]*)" # not supported in Python 3.6
+        idpattern = r"[_a-z][_a-z0-9]*"
         pattern = r"""
         {delim}(?:
           {delim}    | # Escape sequence of two delimiters
