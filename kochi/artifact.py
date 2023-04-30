@@ -122,4 +122,4 @@ def discard(machine):
         except:
             raise Exception("Branch '{}' was not found on machine '{}'.".format(branch, machine))
         subprocess.run(["git", "push", "--delete", destination, branch], check=True)
-        subprocess.run(["git", "branch", "-d", branch], check=True)
+        subprocess.run(["git", "branch", "-D", branch], check=True)
