@@ -517,10 +517,16 @@ def artifact_sync_cmd(machine):
 
 @artifact_group.command(name="discard")
 @machine_option
-def artifact_discard_cmd(machine):
+@click.option("-y", "--yes", is_flag=True, help="Execute the operation without asking.")
+def artifact_discard_cmd(machine, yes):
     """
     Deletes an artifact branch for MACHINE and removes all artifacts stored on MACHINE.
     """
+    if not yes:
+        confirmation = click.prompt("Do you really want to delete the artifact branch? [y/n]", type=str, default="n")
+        if confirmation.lower() != "y":
+            click.echo("Cancelled the operation.")
+            return
     artifact.discard(machine)
 
 # show
