@@ -37,8 +37,8 @@ def sshd(machine, worker_id):
                 yield
             finally:
                 for p in psutil.Process(sshd.pid).children(recursive=True):
-                    p.terminate()
-                sshd.terminate()
+                    p.kill()
+                sshd.kill()
     else:
         print("Warning: sshd is not available, so 'inspect' for this worker will not work.")
         yield
